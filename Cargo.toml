@@ -1,0 +1,37 @@
+[package]
+name = "kag"
+version = "0.1.0"
+edition = "2024"
+authors = ["c2fc2f <contact@c2fc2f.com>"]
+description = "A comprehensive toolkit for Knowledge Graph Enhanced Retrieval-Augmented Generation (KAG), featuring generation pipelines and evaluation benchmarks"
+readme = "README.md"
+repository = "https://github.com/c2fc2f/KAG"
+license = "MIT"
+keywords = [
+    "knowledge-graph",
+    "rag",
+    "generation",
+    "benchmark",
+    "neo4j"
+]
+categories = [
+    "command-line-utilities",
+    "database",
+    "development-tools::evaluation"
+]
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+
+[lints.rust]
+missing_docs = "warn"
+
+[lints.clippy]
+missing_docs_in_private_items = "warn"
+missing_errors_doc = "warn"
+missing_panics_doc = "warn"
+
+[dependencies]
