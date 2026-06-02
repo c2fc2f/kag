@@ -1,0 +1,18 @@
+[providers.ollama]
+type = "Ollama"
+url = "https://openai.example.com"
+
+[providers.openai]
+type = "OpenAI"
+url = "https://openai.example.com/api/v1"
+key = "{{ env('OPEN_AI_KEY') or file('.openai') }}"
+
+[databases.neo4j]
+type = "Neo4j"
+password = "{{ env('NEO4J_PASSWORD') or 'neo4j' }}"
+
+[retrievers.embeddinggemma]
+type = "Embedder"
+provider = "ollama"
+model = "embeddinggemma:latest"
+top_k = 7 

@@ -1,6 +1,8 @@
 debug
 target
 
+config.toml
+
 mutagen.yml
 mutagen.yml.lock
 
