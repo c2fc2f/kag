@@ -11,8 +11,34 @@ key = "{{ env('OPEN_AI_KEY') or file('.openai') }}"
 type = "Neo4j"
 password = "{{ env('NEO4J_PASSWORD') or 'neo4j' }}"
 
-[retrievers.embeddinggemma]
-type = "Embedder"
+[retrievers.neo4j-embedding-triplet-formal]
+type = "EmbedderNeo4j"
 provider = "ollama"
 model = "embeddinggemma:latest"
-top_k = 7 
+top_k = 7
+index = "NODE_INDEX"
+
+[retrievers.neo4j-embedding-triplet-text]
+type = "EmbedderNeo4j"
+provider = "ollama"
+model = "embeddinggemma:latest"
+top_k = 7
+index = "NODE_INDEX"
+translation = {
+  type = "TextualTriplet",
+  node_formats = {
+    Person = "the person {name}",
+    Actor = "the actor {name}",
+    Movie = "the movie {title}"
+  },
+  property_formats = {
+    Person = [
+      "{FROM} is {age} years old.",
+      "{FROM} was born in {birthplace}."
+    ]
+  },
+  relation_formats = {
+    ACTED_IN = "{FROM} acted in {role} during {year} in {TO}",
+    DIRECTED = "{FROM} directed {TO} in {year}"
+  }
+}
