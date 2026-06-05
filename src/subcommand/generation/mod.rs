@@ -329,7 +329,11 @@ pub fn run(args: Args, config: Config) -> ExitCode {
 
       let raw_prompt = args.prompt.into_inner();
       if raw_prompt.contains("{{RETRIEVAL}}") {
-        debug!("Replacing {{RETRIEVAL}} token in prompt with context buffer.");
+        debug!(
+          "\
+            Replacing {{RETRIEVAL}} token in prompt with context buffer.\
+          "
+        );
         raw_prompt.replace("{{RETRIEVAL}}", &buf)
       } else {
         warn!(
@@ -585,7 +589,10 @@ pub async fn process_translation(
           template.render_node(&source, &mut source_text);
         } else {
           trace!(
-            "No format template found for source labels {:?}, falling back to ID.",
+            "\
+              No format template found for source labels {:?}, falling back \
+              to ID.\
+            ",
             source_labels
           );
           let _ = write!(&mut source_text, "{}", source.id());
@@ -596,7 +603,10 @@ pub async fn process_translation(
           template.render_node(&target, &mut target_text);
         } else {
           trace!(
-            "No format template found for target labels {:?}, falling back to ID.",
+            "\
+              No format template found for target labels {:?}, falling back \
+              to ID.\
+            ",
             target_labels
           );
           let _ = write!(&mut target_text, "{}", target.id());
@@ -710,7 +720,10 @@ impl FormatTemplate {
               let _ = write!(buf, "{}", val);
             } else {
               warn!(
-                "FormatToken missing property '{}' for standalone statement on Node {}",
+                "\
+                  FormatToken missing property '{}' for standalone statement \
+                  on Node {}\
+                ",
                 key,
                 node.id()
               );
