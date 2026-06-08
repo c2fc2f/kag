@@ -13,6 +13,7 @@ use std::{
   fmt::Write,
   hash::{Hash, Hasher},
   process::ExitCode,
+  time::Instant,
 };
 
 use async_stream::stream;
@@ -28,6 +29,7 @@ use rig_core::{
   embeddings::EmbeddingModel,
   providers::{ollama, openai},
 };
+use serde_json::json;
 
 use crate::{
   config::{
@@ -61,6 +63,13 @@ pub struct Args {
   /// model answer more creatively
   #[arg(short, long, default_value_t = 1.0)]
   temperature: f64,
+
+  /// The maximum number of tokens for the completion. Increasing this limit
+  /// allows the model to produce longer, more detailed outputs
+  ///
+  /// On Ollama, sets `num_ctx` (context window size)
+  #[arg(short = 'n', long)]
+  tokens: Option<u64>,
 
   /// The user's input prompt
   ///
@@ -147,19 +156,28 @@ pub fn run(args: Args, config: Config) -> ExitCode {
         .base_url(url)
         .build()
         .map(|client| {
-          AnyCompletionModel::Ollama(
-            client
-              .agent(&args.model)
-              .temperature(args.temperature)
-              .build(),
-          )
+          AnyCompletionModel::Ollama({
+            let mut c = client.agent(&args.model).temperature(args.temperature);
+            if let Some(tokens) = args.tokens {
+              c = c.additional_params(json!({
+                "num_ctx": tokens
+              }));
+            }
+            c.build()
+          })
         }),
       Provider::OpenAI { url, key } => openai::Client::builder()
         .api_key(key)
         .base_url(url)
         .build()
         .map(|client| {
-          AnyCompletionModel::OpenAI(client.agent(&args.model).build())
+          AnyCompletionModel::OpenAI({
+            let mut c = client.agent(&args.model).temperature(args.temperature);
+            if let Some(tokens) = args.tokens {
+              c = c.max_tokens(tokens);
+            }
+            c.build()
+          })
         }),
     },
     "Failed to initialize the model {} for provider '{}'",
@@ -188,6 +206,8 @@ pub fn run(args: Args, config: Config) -> ExitCode {
       translation,
     }) => {
       info!("KAG enabled: Initializing Neo4j retrieval workflow...");
+
+      let retrieval_start = Instant::now();
 
       debug!("Initializing embedder model '{}' via '{}'", model, provider);
       let embedder = match_err!(
@@ -255,6 +275,8 @@ pub fn run(args: Args, config: Config) -> ExitCode {
               ",
             );
 
+          let _ = rustls::crypto::ring::default_provider().install_default();
+
           let graph = match_err!(
             rt.block_on(neo4rs::Graph::connect(config)),
             "Failed to connect to the Neo4j database",
@@ -265,23 +287,21 @@ pub fn run(args: Args, config: Config) -> ExitCode {
             index, top_k
           );
 
-          let query = query(
+          let query = query(&format!(
             "
               CALL db.index.vector.queryNodes($index, $top_k, $embed) \
               YIELD node \
-              MATCH (node)-[*0..$neighborhood]-(neighbor) \
-              RETURN p
+              MATCH p = (node)-[*0..{neighborhood}]-(neighbor) \
               UNWIND relationships(p) AS rel
               RETURN \
                 startNode(rel) AS source, \
-                type(rel) AS predicate, \
+                rel AS predicate, \
                 endNode(rel) AS target\
             ",
-          )
+          ))
           .param("index", index.as_str())
-          .param("top_k", *top_k as i64)
-          .param("embed", embed.vec)
-          .param("neighborhood", *neighborhood as i64);
+          .param("top_k", *top_k as u32)
+          .param("embed", embed.vec);
 
           match_err!(
             rt.block_on(graph.execute(query)),
@@ -327,6 +347,11 @@ pub fn run(args: Args, config: Config) -> ExitCode {
       debug!("Generated context buffer of {} bytes.", buf.len());
       trace!("Final Retrieval Buffer Content:\n{:?}", buf);
 
+      info!(
+        "Retrieval workflow completed in {:.2?}",
+        retrieval_start.elapsed()
+      );
+
       let raw_prompt = args.prompt.into_inner();
       if raw_prompt.contains("{{RETRIEVAL}}") {
         debug!(
@@ -337,7 +362,7 @@ pub fn run(args: Args, config: Config) -> ExitCode {
         raw_prompt.replace("{{RETRIEVAL}}", &buf)
       } else {
         warn!(
-          "
+          "\
             KAG is enabled, but '{{RETRIEVAL}}' token was not found in the \
             prompt. Appending context to the end.\
           "
@@ -350,10 +375,14 @@ pub fn run(args: Args, config: Config) -> ExitCode {
   trace!("Final Prompt being sent to model: {:?}", prompt);
   info!("Sending prompt to the completion model...");
 
+  let generation_start = Instant::now();
+
   let response = match_err!(
     rt.block_on(model.prompt(&prompt)),
     "Failed to generate a response from the model"
   );
+
+  info!("Generation completed in {:.2?}", generation_start.elapsed());
 
   println!("{response}");
 
@@ -496,14 +525,14 @@ pub async fn process_translation(
           e
         })?;
 
-        trace!("FormalTriplet - Processing Row {}: {:#?}", row_count, row);
+        trace!("FormalTriplet - Processing Row {}", row_count);
 
         let source: Node = row.get("source").unwrap();
         let predicate: Relation = row.get("predicate").unwrap();
         let target: Node = row.get("target").unwrap();
 
         buf.push_str(&format!(
-          "({})-[{}]->({})",
+          "({})-[:{}]->({})\n",
           source.id(),
           predicate.typ(),
           target.id()

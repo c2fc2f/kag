@@ -52,3 +52,4 @@ futures = "0.3"
 async-stream = "0.3"
 hashbrown = { version = "0.17", features = ["serde"] }
 itertools = "0.14"
+rustls = { version = "0.23", features = ["ring"] }
