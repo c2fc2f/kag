@@ -219,7 +219,8 @@ pub enum Retriever {
 pub enum Neo4jTranslationStrategy {
   /// Formats the graph data as strict Subject-Predicate-Object triplets.
   /// Example:
-  ///   `(Albert_Einstein)-[educatedAt]->(University_of_Zurich)`
+  ///   `(Albert_Einstein)-[:educatedAt]->(University_of_Zurich)`
+  ///   `(Albert_Einstein)-[age]->(76)`
   FormalTriplet {
     /// Maps a combination of node labels to a specific list of property keys
     /// that should be extracted as special property triplets.
@@ -233,6 +234,18 @@ pub enum Neo4jTranslationStrategy {
     ///   `(Albert_Einstein)-[birthplace]->(Ulm)`
     #[serde(default)]
     property_filters: HashMap<LabelSet, Vec<String>>,
+
+    /// Maps a relationship type to a specific list of property keys
+    /// that should be extracted as property triplets.
+    ///
+    /// If a relationship type is NOT present in this map, ALL of its
+    /// properties will be extracted by default.
+    ///
+    /// Example: "educatedAt" -> ["during"]
+    /// Yields:
+    ///   `(Albert_Einstein)-[:educatedAt { during: 1970 }]->(University_of_Zurich)`
+    #[serde(default)]
+    relationship_property_filters: HashMap<String, Vec<String>>,
   },
 
   /// Formats the graph data into natural language OpenIE style triplets.
@@ -269,6 +282,7 @@ impl Default for Neo4jTranslationStrategy {
   fn default() -> Self {
     Self::FormalTriplet {
       property_filters: Default::default(),
+      relationship_property_filters: Default::default(),
     }
   }
 }

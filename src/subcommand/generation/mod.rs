@@ -12,6 +12,7 @@ use std::{
   collections::BTreeSet,
   fmt::Write,
   hash::{Hash, Hasher},
+  path::{Path, PathBuf},
   process::ExitCode,
   time::Instant,
 };
@@ -71,16 +72,25 @@ pub struct Args {
   #[arg(short = 'n', long)]
   tokens: Option<u64>,
 
+  /// The system prompt template to structure the context and question
+  ///
+  /// Any instance of `{{QUESTION}}` will be replaced by the user's input
+  /// prompt.
+  /// If Knowledge-Augmented Generation (KAG/RAG) is enabled (by providing a
+  /// retriever), any instance of `{{RETRIEVAL}}` will be replaced by the
+  /// retrieved context.
+  #[arg(short, long, value_name = "FILE")]
+  pub system_prompt: Option<PathBuf>,
+
   /// The user's input prompt
   ///
   /// You can provide the prompt directly as a standard argument. To pipe or
   /// read the prompt from standard input, you must explicitly pass `-` as the
-  /// argument
+  /// argument.
   ///
-  /// If Knowledge-Augmented Generation (KAG/RAG) is enabled (by providing a
-  /// retriever), any instance of `{{RETRIEVAL}}` in the prompt will be
-  /// replaced by the retrieved context
-  prompt: MaybeStdin<String>,
+  /// This value will be injected into the `{{QUESTION}}` placeholder within
+  /// the system prompt.
+  pub prompt: MaybeStdin<String>,
 }
 
 /// Executes the generation command with the provided arguments and
@@ -192,10 +202,10 @@ pub fn run(args: Args, config: Config) -> ExitCode {
 
   trace!("Raw User Prompt: {:?}", args.prompt);
 
-  let prompt = match retriever {
+  let retrieval_buffer: Option<String> = match retriever {
     None => {
-      info!("No retriever configured. Proceeding with standard generation.");
-      args.prompt.into_inner()
+      info!("No retriever configured. Proceeding without KAG.");
+      None
     }
     Some(Retriever::EmbedderNeo4j {
       provider,
@@ -334,6 +344,7 @@ pub fn run(args: Args, config: Config) -> ExitCode {
           }
       };
 
+      debug!("Processing translation stream...");
       let buf = match rt.block_on(async {
         process_translation(translation, Box::pin(standard_stream)).await
       }) {
@@ -352,27 +363,23 @@ pub fn run(args: Args, config: Config) -> ExitCode {
         retrieval_start.elapsed()
       );
 
-      let raw_prompt = args.prompt.into_inner();
-      if raw_prompt.contains("{{RETRIEVAL}}") {
-        debug!(
-          "\
-            Replacing {{RETRIEVAL}} token in prompt with context buffer.\
-          "
-        );
-        raw_prompt.replace("{{RETRIEVAL}}", &buf)
-      } else {
-        warn!(
-          "\
-            KAG is enabled, but '{{RETRIEVAL}}' token was not found in the \
-            prompt. Appending context to the end.\
-          "
-        );
-        format!("{}\n\nContext:\n{}", raw_prompt, buf)
-      }
+      Some(buf)
     }
   };
 
-  trace!("Final Prompt being sent to model: {:?}", prompt);
+  let prompt = match build_prompt(
+    args.prompt.into_inner(),
+    args.system_prompt.as_deref(),
+    retrieval_buffer.as_deref(),
+  ) {
+    Ok(p) => p,
+    Err(e) => {
+      error!("Failed to read system prompt file: {}", e);
+      return ExitCode::FAILURE;
+    }
+  };
+
+  trace!("Final Prompt being sent to model:\n{}", prompt);
   info!("Sending prompt to the completion model...");
 
   let generation_start = Instant::now();
@@ -387,6 +394,113 @@ pub fn run(args: Args, config: Config) -> ExitCode {
   println!("{response}");
 
   ExitCode::SUCCESS
+}
+
+/// Compiles the final prompt by injecting the user input and retrieval
+/// context into a template.
+///
+/// This function handles the interpolation of two specific placeholders:
+/// - `{{QUESTION}}`: Replaced by the `raw_prompt`.
+/// - `{{RETRIEVAL}}`: Replaced by the `retrieval_buffer`.
+///
+/// # Behavior
+///
+/// **When `system_prompt_path` is provided:**
+/// 1. Replaces `{{QUESTION}}` with the `raw_prompt`.
+/// 2. If a `retrieval_buffer` is provided:
+///    - Replaces `{{RETRIEVAL}}` with the context.
+///    - If `{{RETRIEVAL}}` is missing from the template, appends the context
+///      to the end of the string.
+/// 3. If `retrieval_buffer` is `None` but the template contains
+///    `{{RETRIEVAL}}`, replaces the placeholder with an empty string to clean
+///    up the output.
+///
+/// **When `system_prompt_path` is NOT provided (Fallback):**
+/// 1. Uses the `raw_prompt` as the base template.
+/// 2. If a `retrieval_buffer` is provided:
+///    - Replaces `{{RETRIEVAL}}` within the `raw_prompt` if it exists.
+///    - If `raw_prompt` does not contain `{{RETRIEVAL}}`, appends the context
+///      to the end.
+///
+/// # Arguments
+///
+/// * `raw_prompt` - The user's initial question or input.
+/// * `system_prompt_path` - Optional path to a text file containing the
+///   system prompt template.
+/// * `retrieval_buffer` - Optional context retrieved from a knowledge base or
+///   search tool.
+///
+/// # Returns
+///
+/// Returns `Ok(String)` containing the fully formatted prompt, or
+/// `Err(String)` if the system prompt file cannot be read.
+pub fn build_prompt(
+  mut raw_prompt: String,
+  system_prompt_path: Option<&Path>,
+  retrieval_buffer: Option<&str>,
+) -> std::io::Result<String> {
+  if let Some(sys_prompt_path) = system_prompt_path {
+    info!(
+      "System prompt template provided. Reading from {:?}",
+      sys_prompt_path
+    );
+
+    let mut formatted = std::fs::read_to_string(sys_prompt_path)?;
+
+    if formatted.contains("{{QUESTION}}") {
+      debug!("Replacing {{QUESTION}} placeholder with user prompt.");
+      formatted = formatted.replace("{{QUESTION}}", &raw_prompt);
+    } else {
+      warn!(
+        "System prompt template does not contain a {{QUESTION}} placeholder."
+      );
+    }
+
+    if let Some(context) = retrieval_buffer {
+      if formatted.contains("{{RETRIEVAL}}") {
+        debug!("Replacing {{RETRIEVAL}} placeholder with context buffer.");
+        formatted = formatted.replace("{{RETRIEVAL}}", context);
+      } else {
+        warn!(
+          "\
+            KAG is enabled, but '{{RETRIEVAL}}' token was not found in the \
+            template. Appending context to the end.\
+          "
+        );
+        formatted.push_str("\n\nContext:\n");
+        formatted.push_str(context);
+      }
+    } else if formatted.contains("{{RETRIEVAL}}") {
+      warn!(
+        "\
+          Template contains {{RETRIEVAL}} but no retriever was configured. \
+          Replacing with empty string.\
+        "
+      );
+      formatted = formatted.replace("{{RETRIEVAL}}", "");
+    }
+
+    return Ok(formatted);
+  }
+  info!("No system prompt template provided. Using fallback logic.");
+
+  if let Some(context) = retrieval_buffer {
+    if raw_prompt.contains("{{RETRIEVAL}}") {
+      debug!("Replacing {{RETRIEVAL}} token directly in the user prompt.");
+      raw_prompt = raw_prompt.replace("{{RETRIEVAL}}", context);
+    } else {
+      warn!(
+        "\
+          KAG is enabled, but '{{RETRIEVAL}}' token was not found in the \
+          prompt. Appending context to the end.\
+        "
+      );
+      raw_prompt.push_str("\n\nContext:\n");
+      raw_prompt.push_str(context);
+    }
+  }
+
+  Ok(raw_prompt)
 }
 
 /// A unified wrapper for various LLM completion providers
@@ -514,7 +628,10 @@ pub async fn process_translation(
   );
 
   match translation {
-    Neo4jTranslationStrategy::FormalTriplet { property_filters } => {
+    Neo4jTranslationStrategy::FormalTriplet {
+      property_filters,
+      relationship_property_filters,
+    } => {
       debug!("Executing FormalTriplet strategy branch.");
       let mut processed_nodes = BTreeSet::new();
 
@@ -531,10 +648,53 @@ pub async fn process_translation(
         let predicate: Relation = row.get("predicate").unwrap();
         let target: Node = row.get("target").unwrap();
 
+        let rel_type = predicate.typ();
+
+        let keys_iter = match relationship_property_filters.get(rel_type) {
+          Some(specific_keys) => {
+            debug!(
+              "Applying specific property filters for relationship {}.",
+              rel_type
+            );
+            itertools::Either::Left(specific_keys.iter().map(|k| k.as_str()))
+          }
+          None => {
+            trace!(
+              "No property filters for relationship {}, fetching all keys.",
+              rel_type
+            );
+            itertools::Either::Right(predicate.keys().into_iter())
+          }
+        };
+
+        let mut props_str = String::new();
+        for key in keys_iter {
+          match predicate.get::<serde_json::Value>(key) {
+            Ok(val) => {
+              if props_str.is_empty() {
+                props_str.push_str(" { ");
+              } else {
+                props_str.push_str(", ");
+              }
+              props_str.push_str(&format!("{}: {}", key, val));
+            }
+            Err(e) => {
+              warn!(
+                "Property '{}' requested but missing on relationship {}: {}",
+                key, rel_type, e
+              );
+            }
+          }
+        }
+        if !props_str.is_empty() {
+          props_str.push_str(" }");
+        }
+
         buf.push_str(&format!(
-          "({})-[:{}]->({})\n",
+          "({})-[:{}{}]->({})\n",
           source.id(),
           predicate.typ(),
+          props_str,
           target.id()
         ));
 
