@@ -16,13 +16,16 @@ type = "EmbedderNeo4j"
 provider = "ollama"
 model = "embeddinggemma:latest"
 top_k = 7
-index = "NODE_INDEX"
+extra.neo4j.index = "NODE_INDEX"
 
 [retrievers.neo4j-embedding-triplet-text]
 type = "EmbedderNeo4j"
 provider = "ollama"
 model = "embeddinggemma:latest"
 top_k = 7
+
+[retrievers.neo4j-embedding-triplet-text.extra.neo4j]
+type = "Neo4j"
 index = "NODE_INDEX"
 translation = {
   type = "TextualTriplet",

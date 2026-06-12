@@ -2,16 +2,17 @@
 //! Generation (KAG), featuring generation pipelines and evaluation benchmarks
 
 mod config;
+mod generation;
+mod retrieval;
 mod subcommand;
 
-use std::{fs, io::Write, process::ExitCode};
+use std::{io::Write, process::ExitCode};
 
 use clap::{Parser, Subcommand};
 use clap_verbosity_flag::Verbosity;
 use log::{LevelFilter, debug};
-use minijinja::Environment;
 
-use crate::{config::Config, subcommand::generation};
+use crate::config::{Config, load_config};
 
 /// Unwraps a Result::Ok, or logs the error and returns ExitCode::FAILURE.
 #[macro_export]
@@ -69,7 +70,14 @@ pub enum Command {
   /// This subcommand runs either a standard text generation workflow or an
   /// augmented generation workflow (KAG/RAG) when a retriever component is
   /// provided.
-  Generation(generation::Args),
+  Generation(subcommand::generation::Args),
+  /// Run performance and quality benchmarks across evaluation datasets.
+  ///
+  /// This subcommand evaluates specified datasets against configured models
+  /// and techniques. It supports parallel execution, resuming previously
+  /// interrupted runs, and saving the evaluation metrics to a target output
+  /// directory.
+  Benchmark(subcommand::benchmark::Args),
 }
 
 fn main() -> ExitCode {
@@ -99,35 +107,15 @@ fn main() -> ExitCode {
   });
   builder.init();
 
-  let config = match_err!(
-    fs::read_to_string(args.config),
-    "The configuration file could not be read"
-  );
-
-  let mut env = Environment::new();
-  env.add_function("file", |f: String| {
-    fs::read_to_string(&f).map_err(|e| {
-      minijinja::Error::new(
-        minijinja::ErrorKind::InvalidOperation,
-        format!("The file {f} could not be read: {e:#}."),
-      )
-    })
-  });
-  env.add_function("env", |e: String| std::env::var(&e).unwrap_or_default());
-
-  let config = match_err!(
-    env.render_str(&config, minijinja::context!()),
-    "The special syntax in the configuration file failed to render"
-  );
-
   let config: Config = match_err!(
-    toml::from_str(&config),
-    "The configuration file could not be parsed as valid TOML"
+    load_config(args.config),
+    "Unable to load the configuration file"
   );
 
-  debug!("Final Config: {config:#?}");
+  debug!("Final configuration: {config:?}");
 
   match args.command {
-    Command::Generation(args) => generation::run(args, config),
+    Command::Generation(args) => subcommand::generation::run(args, config),
+    Command::Benchmark(args) => subcommand::benchmark::run(args, config),
   }
 }

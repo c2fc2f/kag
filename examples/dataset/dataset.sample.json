@@ -1,0 +1,24 @@
+{
+  "free-form": {
+    "0": {
+      "input": "What are the primary anatomical finding sites and associated morphological processes that define Rheumatoid Arthritis, and what specific serological or localized subtypes (such as joint-specific variants) are classified under this condition in the disease taxonomy?"
+    },
+    "1": {
+      "input": "How is Rheumatoid Arthritis classified within the graph, what are its finding sites and associated morphology, and what are some of its related conditions?"
+    }
+  },
+  "mcq-form": {
+    "0": {
+      "input": "Which vitamin deficiency is most commonly associated with scurvy?",
+      "output": {
+        "type": "MCQ",
+        "options": {
+          "a": "Vitamin A",
+          "b": "Vitamin C",
+          "c": "Vitamin D",
+          "d": "Vitamin K"
+        }
+      }
+    }
+  }
+}

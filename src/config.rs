@@ -7,10 +7,14 @@
 //! credentials for supported services
 
 use core::fmt;
-use std::{collections::BTreeSet, fmt::Debug, ops::Deref, str::FromStr};
+use std::{
+  collections::BTreeSet, fmt::Debug, fs, ops::Deref, path::Path, str::FromStr,
+};
 
+use anyhow::Context;
 use hashbrown::HashMap;
-use serde::{Deserialize, Deserializer};
+use minijinja::Environment;
+use serde::{Deserialize, Deserializer, Serialize, de::DeserializeOwned};
 
 /// Structure for the configuration of the program
 ///
@@ -77,6 +81,15 @@ impl<'de> Deserialize<'de> for ComponentName {
   {
     Self::from_str(&String::deserialize(deserializer)?)
       .map_err(serde::de::Error::custom)
+  }
+}
+
+impl Serialize for ComponentName {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: serde::Serializer,
+  {
+    serializer.serialize_str(&self.0)
   }
 }
 
@@ -180,7 +193,7 @@ fn neo4j_default_database() -> String {
 pub enum Retriever {
   /// Configuration for an embedding model used to vectorize data for
   /// retrieval
-  EmbedderNeo4j {
+  Embedder {
     /// The identifier of the configured AI `Provider` to use
     provider: ComponentName,
 
@@ -189,17 +202,32 @@ pub enum Retriever {
 
     /// The maximum number of top similar elements to retrieve (Top-K)
     #[serde(default = "default_top_k")]
-    top_k: usize,
+    top_k: u32,
+
+    /// Database-specific configuration extensions for the retriever, bykeyed
+    /// by the targeted database name
+    #[serde(default)]
+    extra: HashMap<ComponentName, RetrieverExtra>,
+  },
+}
+
+/// Specialized configuration extensions for specific database backends
+/// or advanced retrieval mechanisms
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type")]
+#[non_exhaustive]
+pub enum RetrieverExtra {
+  /// Configuration specific to a Neo4j graph database retrieval backend
+  Neo4j {
+    /// The specific vector index in Neo4j to query against
+    index: String,
 
     /// The depth of the graph neighborhood to retrieve around the matched
     /// nodes.
     /// A value of 1 means direct neighbors, 2 means neighbors of neighbors,
     /// etc.
     #[serde(default = "default_neighborhood")]
-    neighborhood: usize,
-
-    /// The specific vector index in Neo4j to query against
-    index: String,
+    neighborhood: u32,
 
     /// The strategy used to translate the retrieved Neo4j graph data into
     /// text
@@ -405,11 +433,58 @@ pub enum FormatToken {
 }
 
 /// Returns the default number of elements to retrieve (Top-K).
-fn default_top_k() -> usize {
+fn default_top_k() -> u32 {
   5
 }
 
 /// Returns the default graph neighborhood depth (number of hops).
-fn default_neighborhood() -> usize {
+fn default_neighborhood() -> u32 {
   1
+}
+
+/// Loads and deserializes a configuration file.
+///
+/// The file is first rendered as a [MiniJinja] template, which exposes two
+/// helper functions:
+///
+/// - `file(path)` — inlines the content of the file at `path`
+/// - `env(name)` — inlines the value of the environment variable `name`,
+///   or an empty string if it is not set
+///
+/// The rendered output is then parsed as [TOML] into `T`.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - the file at `config_path` cannot be read
+/// - the template rendering fails (e.g. a `file()` call references a missing
+///   file)
+/// - the rendered output is not valid TOML or does not match the shape of `T`
+///
+/// [MiniJinja]: https://docs.rs/minijinja
+/// [TOML]: https://toml.io
+pub fn load_config<T>(config_path: impl AsRef<Path>) -> anyhow::Result<T>
+where
+  T: DeserializeOwned,
+{
+  let raw = fs::read_to_string(config_path)
+    .context("The configuration file could not be read")?;
+
+  let mut env = Environment::new();
+  env.add_function("file", |f: String| {
+    fs::read_to_string(&f).map_err(|e| {
+      minijinja::Error::new(
+        minijinja::ErrorKind::InvalidOperation,
+        format!("The file {f} could not be read: {e:#}."),
+      )
+    })
+  });
+  env.add_function("env", |e: String| std::env::var(&e).unwrap_or_default());
+
+  let rendered = env
+    .render_str(&raw, minijinja::context!())
+    .context("The special syntax in the configuration file failed to render")?;
+
+  toml::from_str(&rendered)
+    .context("The configuration file could not be parsed as valid TOML")
 }
