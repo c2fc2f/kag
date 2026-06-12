@@ -26,20 +26,15 @@
     in
     {
       packages = eachSystem (
-        system:
-        let
-          pkgs = nixpkgs.legacyPackages.${system};
-        in
+        system: 
         {
           default = self.packages.${system}.kag;
 
-          kag = pkgs.callPackage ./nix/package.nix {
+          kag = pkgsFor.${system}.callPackage ./nix/package.nix {
             version = self.rev or self.dirtyRev or "dirty";
           };
         }
       );
-
-      defaultPackage = eachSystem (system: self.packages.${system}.default);
 
       devShells = eachSystem (system: {
         default =

@@ -29,6 +29,7 @@ use crate::{
   config::{ComponentName, Config, load_config},
   match_err,
   subcommand::benchmark::{
+    self,
     config::Benchmark,
     dataset::{DatasetEntry, Datasets, Output},
   },
@@ -159,7 +160,7 @@ pub fn run(args: Args, config: Config) -> ExitCode {
 /// * `benchmark` - Reference to the loaded benchmark setups
 /// * `output` - Root path where results should be persisted
 /// * `prefix` - String slice to prefix the JSON filenames
-/// * `override` - If `true`, overwrites existing files; if `false`, skips
+/// * `overwrite` - If `true`, overwrites existing files; if `false`, skips
 ///   processing when files exist
 ///
 /// # Errors
@@ -175,7 +176,7 @@ async fn execute_benchmark(
   benchmark: &Benchmark,
   output: &Path,
   prefix: &str,
-  r#override: bool,
+  overwrite: bool,
 ) -> std::io::Result<()> {
   info!(
     "Starting benchmark execution [Dataset: {}, Question: {}]",
@@ -189,12 +190,12 @@ async fn execute_benchmark(
 
   for (sname, setup) in benchmark.as_ref() {
     if let Some(dataset) = &setup.datasets
-      && dataset.contains(dname)
+      && !dataset.contains(dname)
     {
       trace!(
         "\
           [Dataset: {}] Skipping setup '{}' for question '{}': dataset is \
-          explicitly excluded\
+          not included in the allowed list\
         ",
         dname, sname, qname
       );
@@ -203,7 +204,7 @@ async fn execute_benchmark(
 
     let path = base_p.join(format!("{prefix}{sname}.json"));
 
-    if !r#override
+    if !overwrite
       && try_exists(&path).await?
       && metadata(&path).await?.len() > 0
     {
@@ -250,7 +251,7 @@ async fn execute_benchmark(
       }
     };
 
-    let response: result::Result<_> = setup
+    let response: benchmark::result::Result<_> = setup
       .config
       .generate(config, Some(system_prompt), &question.input)
       .await
@@ -282,4 +283,3 @@ async fn execute_benchmark(
   );
   Ok(())
 }
-

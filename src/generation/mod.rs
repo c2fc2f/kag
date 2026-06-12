@@ -1,4 +1,10 @@
-//! wip
+//! Provider Abstraction and Prompt Orchestration Module
+//!
+//! This module serves as a unified orchestration layer for multi-provider
+//! Large Language  Model (LLM) workflows. It abstracts the underlying
+//! initialization boilerplate for completion and embedding clients across
+//! different API ecosystems (such as OpenAI and Ollama) and provides
+//! structured template utilities for Context-Augmented Generation (RAG/KAG)
 
 pub mod config;
 
@@ -125,7 +131,7 @@ impl AnyEmbedderModel {
   /// [`Embedding`](rig_core::embeddings::Embedding) on success, or an
   /// [`EmbeddingError`](rig_core::embeddings::EmbeddingError) if the
   /// underlying provider request fails
-  pub async fn embed_texts(
+  pub async fn embed_text(
     &self,
     text: &str,
   ) -> Result<

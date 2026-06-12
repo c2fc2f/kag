@@ -28,20 +28,6 @@ macro_rules! match_err {
   };
 }
 
-/// Unwraps an Option::Some, or logs the error and returns ExitCode::FAILURE.
-#[macro_export]
-macro_rules! match_some {
-  ($expr:expr, $msg:literal $(, $arg:expr)* $(,)?) => {
-    match $expr {
-      Some(val) => val,
-      None => {
-        ::log::error!($msg $(, $arg)*);
-        return ::std::process::ExitCode::FAILURE;
-      }
-    }
-  };
-}
-
 /// A comprehensive toolkit for Knowledge Graph Enhanced Retrieval-Augmented
 /// Generation (KAG), featuring generation pipelines and evaluation benchmarks
 #[derive(Parser, Debug)]

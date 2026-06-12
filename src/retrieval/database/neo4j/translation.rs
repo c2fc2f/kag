@@ -19,7 +19,7 @@ use std::{collections::BTreeSet, fmt::Write, hash::Hasher, time::Instant};
 
 use anyhow::Context;
 use futures::{Stream, StreamExt};
-use hashbrown::Equivalent;
+use hashbrown::{Equivalent, HashSet};
 use log::{debug, info, trace, warn};
 use neo4rs::{Node, Relation, Row};
 
@@ -94,7 +94,7 @@ pub async fn process_translation(
       relationship_property_filters,
     } => {
       debug!("Executing FormalTriplet strategy branch.");
-      let mut processed_nodes = BTreeSet::new();
+      let mut processed_nodes = HashSet::new();
 
       while let Some(row_result) = stream.next().await {
         row_count += 1;
@@ -104,9 +104,17 @@ pub async fn process_translation(
 
         trace!("FormalTriplet - Processing Row {}", row_count);
 
-        let source: Node = row.get("source").unwrap();
-        let predicate: Relation = row.get("predicate").unwrap();
-        let target: Node = row.get("target").unwrap();
+        let source: Node = row
+          .get("source")
+          .context("Missing 'source' property in the row")?;
+
+        let predicate: Relation = row
+          .get("predicate")
+          .context("Missing 'predicate' property in the row")?;
+
+        let target: Node = row
+          .get("target")
+          .context("Missing 'target' property in the row")?;
 
         let rel_type = predicate.typ();
 
@@ -231,9 +239,17 @@ pub async fn process_translation(
 
         trace!("TextualTriplet - Processing Row {}: {:?}", row_count, row);
 
-        let source: Node = row.get("source").unwrap();
-        let predicate: Relation = row.get("predicate").unwrap();
-        let target: Node = row.get("target").unwrap();
+        let source: Node = row
+          .get("source")
+          .context("Missing 'source' property in the row")?;
+
+        let predicate: Relation = row
+          .get("predicate")
+          .context("Missing 'predicate' property in the row")?;
+
+        let target: Node = row
+          .get("target")
+          .context("Missing 'target' property in the row")?;
 
         let source_labels: BTreeSet<_> = source.labels().into_iter().collect();
         let target_labels: BTreeSet<_> = target.labels().into_iter().collect();
@@ -292,10 +308,10 @@ pub async fn process_translation(
 
           if let Some(prop_templates) = property_formats.get(&QuerySet(labels))
           {
+            vertices += if prop_templates.is_empty() { 0 } else { 1 };
             for template in prop_templates {
               properties += template.render_property(node, base_text, &mut buf);
               buf.push('\n');
-              vertices += 1
             }
           } else {
             trace!("No property format found for labels: {:?}", labels);

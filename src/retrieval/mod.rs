@@ -1,4 +1,9 @@
-//! wip
+//! Knowledge Retrieval and Context Augmentation Module
+//!
+//! This module coordinates the execution pipelines for semantic search, data
+//! retrieval, and context orchestration against multi-backend databases. It
+//! acts as the primary bridge between user prompts, third-party AI provider
+//! embedding models, and custom database search implementations
 
 use std::time::{Duration, Instant};
 
@@ -83,7 +88,7 @@ impl Retriever {
         top_k,
         extra,
       } => {
-        info!("KAG enabled: Initializing Neo4j retrieval workflow...");
+        info!("KAG enabled: Initializing Embedder retrieval workflow...");
 
         let retrieval_start = Instant::now();
 
@@ -107,7 +112,7 @@ impl Retriever {
 
         debug!("Generating embeddings for the user prompt...");
         let embedding = embedder
-          .embed_texts(prompt)
+          .embed_text(prompt)
           .await
           .context("Failed to generate embeddings for the prompt")?;
 
