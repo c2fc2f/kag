@@ -1,9 +1,9 @@
 Based strictly on the provided UMLS knowledge graph context, answer the following question:
 
-{{QUESTION}}
+{{INPUT}}
 
 Graph Context:
-{{RETRIEVAL}}
+{{RETRIEVAL | default('<empty>')}}
 
 Follow these rules:
 1. Formulate your answer by explicitly tracing the relationships (e.g., 'tributary_of', 'treats', 'exhibits', 'measurement_of') between the medical nodes found in the graph context.

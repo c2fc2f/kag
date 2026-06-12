@@ -39,7 +39,7 @@ pub struct BenchmarkEntry {
   pub config: generation::config::Generation,
   /// System prompt template used to structure context and the user question
   ///
-  /// - `{{QUESTION}}` is replaced by the user's input prompt
+  /// - `{{INPUT}}` is replaced by the user's input prompt
   /// - `{{RETRIEVAL}}` is replaced by the retrieved context
   /// - `{{CHOICE}}` is replaced by the available answer options
   pub system_prompt: String,

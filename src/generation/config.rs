@@ -12,11 +12,11 @@ use std::{
 
 use anyhow::Context;
 use log::{debug, info, trace, warn};
+use minijinja::Environment;
 use serde::{Deserialize, Serialize};
 
 use crate::{
   config::{ComponentName, Config},
-  generation::build_prompt,
   retrieval,
 };
 
@@ -130,6 +130,7 @@ impl Generation {
     config: &Config,
     system_prompt: Option<impl AsRef<str>>,
     prompt: impl AsRef<str> + Debug,
+    mut environment: Environment<'_>,
   ) -> anyhow::Result<Output> {
     let start = Instant::now();
     info!("Starting text generation workflow...");
@@ -199,19 +200,33 @@ impl Generation {
           "
         );
 
-        Some(
-          r.retrieve(prompt.as_ref(), &config.providers, d, d_name,).await.with_context(|| format!(
+        let ret = r.retrieve(prompt.as_ref(), &config.providers, d, d_name,).await.with_context(|| format!(
           "Failed during the knowledge retrieval phase (KAG) on database '{}'",
           d_name
-        ))?)
+        ))?;
+
+        if !ret.result.is_empty() {
+          environment.add_global("RETRIEVAL", &ret.result);
+        };
+
+        Some(ret)
       }
     };
 
-    let prompt = build_prompt(
-      prompt,
-      system_prompt,
-      retrieval.as_ref().map(|r| r.result.as_str()),
-    );
+    environment.set_undefined_behavior(minijinja::UndefinedBehavior::Strict);
+
+    let prompt = if let Some(system_prompt) = system_prompt {
+      environment.add_global("INPUT", prompt.as_ref());
+      environment.render_str(system_prompt.as_ref(), minijinja::context! {})
+    } else {
+      environment.render_str(prompt.as_ref(), minijinja::context! {})
+    }
+    .context(
+      "\
+        Failed to render the prompt template: ensure all variables used in \
+        the template are provided\
+      ",
+    )?;
 
     trace!("Final Prompt being sent to model: {:?}", prompt);
     info!("Sending prompt to the completion model...");

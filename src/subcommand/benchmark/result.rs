@@ -30,9 +30,8 @@ where
 {
   fn from(val: anyhow::Result<T>) -> Self {
     match val {
-      Err(e) => Self::Error(e.to_string()),
+      Err(e) => Self::Error(format!("{e:#}")),
       Ok(r) => Self::Ok(r),
     }
   }
 }
-

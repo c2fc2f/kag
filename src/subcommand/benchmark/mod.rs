@@ -10,7 +10,6 @@ mod dataset;
 mod result;
 
 use std::{
-  borrow::Cow,
   num::NonZero,
   ops::Deref,
   path::{Path, PathBuf},
@@ -20,6 +19,7 @@ use std::{
 
 use futures::{StreamExt, stream};
 use log::{debug, error, info, trace};
+use minijinja::Environment;
 use tokio::{
   fs::{OpenOptions, create_dir_all, metadata, try_exists},
   io::AsyncWriteExt,
@@ -85,6 +85,8 @@ pub fn run(args: Args, config: Config) -> ExitCode {
     .worker_threads(args.parallel.get())
     .build()
     .expect("Failed building the Runtime");
+
+  let _ = rustls::crypto::ring::default_provider().install_default();
 
   let datasets: Datasets = match_err!(
     serde_json::from_reader(match_err!(
@@ -223,14 +225,10 @@ async fn execute_benchmark(
       dname, sname, qname
     );
 
-    let system_prompt: Cow<str> = match &question.output {
-      None => {
-        if setup.system_prompt.contains("{{CHOICE}}") {
-          Cow::from(setup.system_prompt.replace("{{CHOICE}}", ""))
-        } else {
-          Cow::from(&setup.system_prompt)
-        }
-      }
+    let mut env = Environment::new();
+
+    match &question.output {
+      None => (),
       Some(Output::Mcq(choices)) => {
         let choices = choices.iter().fold(String::new(), |mut acc, (k, v)| {
           if !acc.is_empty() {
@@ -242,24 +240,24 @@ async fn execute_benchmark(
 
           acc
         });
-
-        if setup.system_prompt.contains("{{CHOICE}}") {
-          Cow::from(setup.system_prompt.replace("{{CHOICE}}", &choices))
-        } else {
-          Cow::from(format!("{}\n\nChoice:\n{}", setup.system_prompt, choices))
-        }
+        env.add_global("CHOICE", choices);
       }
     };
 
     let response: benchmark::result::Result<_> = setup
       .config
-      .generate(config, Some(system_prompt), &question.input)
+      .generate(
+        config,
+        Some(setup.system_prompt.as_str()),
+        &question.input,
+        env,
+      )
       .await
       .map_err(|e| {
         error!(
           "\
             [Dataset: {}] Failed to generate configuration for setup '{}' on \
-            question '{}'. Error: {:?}\
+            question '{}'. Error: {:#}\
           ",
           dname, sname, qname, e
         );

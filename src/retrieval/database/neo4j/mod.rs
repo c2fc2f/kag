@@ -75,7 +75,6 @@ pub async fn retrieve_with_embedding(
       "Neo4j ConfigBuilder failed despite all credentials being supplied",
     )?;
 
-  let _ = rustls::crypto::ring::default_provider().install_default();
   let graph = neo4rs::Graph::connect(config).await.with_context(|| {
     format!(
       "Failed to establish a connection to Neo4j database '{}' at {}",

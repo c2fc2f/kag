@@ -12,6 +12,7 @@ use std::{fs, path::PathBuf, process::ExitCode};
 
 use clap_stdin::MaybeStdin;
 use log::debug;
+use minijinja::Environment;
 
 use crate::{config::Config, generation::config::Generation, match_err};
 
@@ -26,7 +27,7 @@ pub struct Args {
 
   /// The system prompt template to structure the context and question
   ///
-  /// Any instance of `{{QUESTION}}` will be replaced by the user's input
+  /// Any instance of `{{INPUT}}` will be replaced by the user's input
   /// prompt.
   /// If Knowledge-Augmented Generation (KAG/RAG) is enabled (by providing a
   /// retriever), any instance of `{{RETRIEVAL}}` will be replaced by the
@@ -40,7 +41,7 @@ pub struct Args {
   /// read the prompt from standard input, you must explicitly pass `-` as the
   /// argument.
   ///
-  /// This value will be injected into the `{{QUESTION}}` placeholder within
+  /// This value will be injected into the `{{INPUT}}` placeholder within
   /// the system prompt.
   prompt: MaybeStdin<String>,
 }
@@ -65,6 +66,8 @@ pub fn run(args: Args, config: Config) -> ExitCode {
     .build()
     .expect("Failed building the Runtime");
 
+  let _ = rustls::crypto::ring::default_provider().install_default();
+
   let system_prompt = match_err!(
     args.system_prompt.map(fs::read_to_string).transpose(),
     "Failed to read system prompt file"
@@ -74,7 +77,8 @@ pub fn run(args: Args, config: Config) -> ExitCode {
     rt.block_on(args.generation.generate(
       &config,
       system_prompt.as_deref(),
-      args.prompt.into_inner()
+      args.prompt.into_inner(),
+      Environment::new(),
     )),
     "Failed to generate response from the model"
   );

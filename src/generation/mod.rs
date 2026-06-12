@@ -8,7 +8,6 @@
 
 pub mod config;
 
-use log::{debug, info, warn};
 use rig_core::{
   agent::Agent,
   client::{CompletionClient, EmbeddingsClient, Nothing},
@@ -178,104 +177,4 @@ impl Provider {
         .map(|client| AnyEmbedderModel::OpenAI(client.embedding_model(model))),
     }
   }
-}
-
-/// Compiles the final prompt by injecting the user input and retrieval
-/// context into a template.
-///
-/// This function handles the interpolation of two specific placeholders:
-/// - `{{QUESTION}}`: Replaced by the `raw_prompt`.
-/// - `{{RETRIEVAL}}`: Replaced by the `retrieval_buffer`.
-///
-/// # Behavior
-///
-/// **When `system_prompt` is provided:**
-/// 1. Replaces `{{QUESTION}}` with the `raw_prompt`.
-/// 2. If a `retrieval_buffer` is provided:
-///    - Replaces `{{RETRIEVAL}}` with the context.
-///    - If `{{RETRIEVAL}}` is missing from the template, appends the context
-///      to the end of the string.
-/// 3. If `retrieval_buffer` is `None` but the template contains
-///    `{{RETRIEVAL}}`, replaces the placeholder with an empty string to clean
-///    up the output.
-///
-/// **When `system_prompt` is NOT provided (Fallback):**
-/// 1. Uses the `raw_prompt` as the base template.
-/// 2. If a `retrieval_buffer` is provided:
-///    - Replaces `{{RETRIEVAL}}` within the `raw_prompt` if it exists.
-///    - If `raw_prompt` does not contain `{{RETRIEVAL}}`, appends the context
-///      to the end.
-///
-/// # Arguments
-///
-/// * `raw_prompt` - The user's initial question or input.
-/// * `system_prompt` - Optional system prompt template.
-/// * `retrieval_buffer` - Optional context retrieved from a knowledge base or
-///   search tool.
-pub fn build_prompt(
-  raw_prompt: impl AsRef<str>,
-  system_prompt: Option<impl AsRef<str>>,
-  retrieval_buffer: Option<impl AsRef<str>>,
-) -> String {
-  if let Some(formatted) = system_prompt {
-    info!("System prompt template provided",);
-
-    let mut formatted = formatted.as_ref().to_string();
-
-    if formatted.contains("{{QUESTION}}") {
-      debug!("Replacing {{QUESTION}} placeholder with user prompt.");
-      formatted = formatted.replace("{{QUESTION}}", raw_prompt.as_ref());
-    } else {
-      warn!(
-        "System prompt template does not contain a {{QUESTION}} placeholder."
-      );
-    }
-
-    if let Some(context) = retrieval_buffer {
-      if formatted.contains("{{RETRIEVAL}}") {
-        debug!("Replacing {{RETRIEVAL}} placeholder with context buffer.");
-        formatted = formatted.replace("{{RETRIEVAL}}", context.as_ref());
-      } else {
-        warn!(
-          "\
-            KAG is enabled, but '{{RETRIEVAL}}' token was not found in the \
-            template. Appending context to the end.\
-          "
-        );
-        formatted.push_str("\n\nContext:\n");
-        formatted.push_str(context.as_ref());
-      }
-    } else if formatted.contains("{{RETRIEVAL}}") {
-      warn!(
-        "\
-          Template contains {{RETRIEVAL}} but no retriever was configured. \
-          Replacing with empty string.\
-        "
-      );
-      formatted = formatted.replace("{{RETRIEVAL}}", "");
-    }
-
-    return formatted;
-  }
-  info!("No system prompt template provided. Using fallback logic.");
-
-  let mut raw_prompt = raw_prompt.as_ref().to_string();
-
-  if let Some(context) = retrieval_buffer {
-    if raw_prompt.contains("{{RETRIEVAL}}") {
-      debug!("Replacing {{RETRIEVAL}} token directly in the user prompt.");
-      raw_prompt = raw_prompt.replace("{{RETRIEVAL}}", context.as_ref());
-    } else {
-      warn!(
-        "\
-          KAG is enabled, but '{{RETRIEVAL}}' token was not found in the \
-          prompt. Appending context to the end.\
-        "
-      );
-      raw_prompt.push_str("\n\nContext:\n");
-      raw_prompt.push_str(context.as_ref());
-    }
-  }
-
-  raw_prompt
 }
