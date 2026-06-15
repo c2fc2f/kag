@@ -32,9 +32,9 @@ use crate::{
 /// label-keyed format maps without allocating an owned [`LabelSet`].
 ///
 /// It implements [`Equivalent<LabelSet>`] and [`Hash`] so that it hashes and
-/// compares identically to a [`LabelSet`] holding the same labels. This relies
-/// on the invariant that the wrapped set is sorted (a [`BTreeSet`]), matching
-/// [`LabelSet`]'s own ordering.
+/// compares identically to a [`LabelSet`] holding the same labels. This
+/// relies on the invariant that the wrapped set is sorted (a [`BTreeSet`]),
+/// matching [`LabelSet`]'s own ordering.
 struct QuerySet<'a>(
   /// The borrowed, sorted set of labels to look up.
   &'a BTreeSet<&'a str>,
@@ -234,6 +234,7 @@ pub async fn process_translation(
     } => {
       debug!("Executing TextualTriplet strategy branch.");
       let mut processed_nodes = BTreeSet::new();
+      let mut displayed_nodes = BTreeSet::new();
 
       while let Some(row_result) = stream.next().await {
         row_count += 1;
@@ -259,8 +260,9 @@ pub async fn process_translation(
         let target_labels: BTreeSet<_> = target.labels().into_iter().collect();
 
         let mut source_text = String::new();
+        let mut source_props = 0u32;
         if let Some(template) = node_formats.get(&QuerySet(&source_labels)) {
-          properties += template.render_node(&source, &mut source_text);
+          source_props = template.render_node(&source, &mut source_text);
         } else {
           trace!(
             "\
@@ -273,8 +275,9 @@ pub async fn process_translation(
         }
 
         let mut target_text = String::new();
+        let mut target_props = 0u32;
         if let Some(template) = node_formats.get(&QuerySet(&target_labels)) {
-          properties += template.render_node(&target, &mut target_text);
+          target_props = template.render_node(&target, &mut target_text);
         } else {
           trace!(
             "\
@@ -287,14 +290,24 @@ pub async fn process_translation(
         }
 
         if let Some(rel_template) = relation_formats.get(predicate.typ()) {
-          properties += rel_template.render_relation(
+          let rel_props = rel_template.render_relation(
             &predicate,
             &source_text,
             &target_text,
             &mut buf,
           );
-          relationships += 1;
           buf.push('\n');
+
+          relationships += 1;
+
+          properties += rel_props + source_props + target_props;
+
+          if displayed_nodes.insert(source.id()) {
+            vertices += 1;
+          }
+          if displayed_nodes.insert(target.id()) {
+            vertices += 1;
+          }
         } else {
           warn!(
             "No relation format found for predicate type: {}",
@@ -312,10 +325,12 @@ pub async fn process_translation(
 
           if let Some(prop_templates) = property_formats.get(&QuerySet(labels))
           {
-            vertices += if prop_templates.is_empty() { 0 } else { 1 };
             for template in prop_templates {
               properties += template.render_property(node, base_text, &mut buf);
               buf.push('\n');
+            }
+            if !prop_templates.is_empty() && displayed_nodes.insert(node.id()) {
+              vertices += 1;
             }
           } else {
             trace!("No property format found for labels: {:?}", labels);

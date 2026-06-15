@@ -30,13 +30,18 @@ pub struct Output {
 #[serde(rename_all = "lowercase")]
 pub enum Stats {
   /// Statistics specific to a Neo4j graph database instance
+  ///
+  /// All counts reflect what is actually rendered into the output context,
+  /// not the full size of the retrieved subgraph. Because the two translation
+  /// strategies display different things, the same subgraph can yield
+  /// different counts depending on the configured strategy
   Neo4j {
-    /// The total number of vertices present in the graph
+    /// The number of distinct nodes (vertices) that appear in the rendered
+    /// output
     vertices: u32,
-    /// The total number of relationships connecting the nodes
+    /// The number of relationships (edges) rendered into the output
     relationships: u32,
-    /// The total count of key-value properties stored across all vertices and
-    /// relationships
+    /// The number of property values substituted into the rendered output
     properties: u32,
     /// The exact duration spent executing the query and processing data
     /// within the database backend
