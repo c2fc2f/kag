@@ -41,7 +41,7 @@ rustPlatform.buildRustPackage rec {
       --fish <($out/bin/${meta.mainProgram} completion fish) \
       --zsh <($out/bin/${meta.mainProgram} completion zsh)
 
-    installManPage target/man/*
+    installManPage $(find target -type f -path "*/build/${pname}-*/out/*.1")
   '';
 
   meta = with lib; {

@@ -7,9 +7,9 @@ use clap::CommandFactory;
 
 /// Generates man pages for the CLI
 fn generate_man_pages() -> std::io::Result<()> {
-  let out_dir =
-    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target/man");
-  std::fs::create_dir_all(&out_dir)?;
+  let out_dir = std::path::PathBuf::from(
+    std::env::var_os("OUT_DIR").ok_or(std::io::ErrorKind::NotFound)?,
+  );
 
   let cmd = cli::Args::command();
   let name = cmd.get_name();
@@ -36,13 +36,12 @@ fn generate_man_pages() -> std::io::Result<()> {
   Ok(())
 }
 
-fn main() {
+fn main() -> std::io::Result<()> {
   if let Ok(val) = std::env::var("NIX_RELEASE_VERSION") {
     println!("cargo:rustc-env=CARGO_PKG_VERSION={val}");
   }
   println!("cargo:rerun-if-env-changed=NIX_RELEASE_VERSION");
 
-  if let Err(err) = generate_man_pages() {
-    println!("cargo:warning=Error generating man pages: {err}");
-  }
+  println!("cargo:rerun-if-changed=src/cli");
+  generate_man_pages()
 }

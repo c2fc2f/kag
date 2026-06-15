@@ -76,6 +76,6 @@ fn main() -> ExitCode {
   match args.command {
     Command::Generation(args) => subcommand::generation::run(args, config),
     Command::Benchmark(args) => subcommand::benchmark::run(args, config),
-    _ => unreachable!(),
+    Command::Completion(_) => unreachable!(),
   }
 }

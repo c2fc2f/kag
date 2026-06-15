@@ -86,3 +86,43 @@ impl std::fmt::Display for ComponentName {
     std::fmt::Display::fmt(&self.0, f)
   }
 }
+
+#[cfg(test)]
+#[allow(clippy::missing_docs_in_private_items)]
+mod tests {
+  // ---- ComponentName ----
+
+  use std::str::FromStr;
+
+  use crate::cli::component::ComponentName;
+
+  #[test]
+  fn component_name_accepts_lowercase_digits_and_hyphen() {
+    for s in ["abc", "a", "123", "valid-name-123", "-"] {
+      let name = ComponentName::from_str(s)
+        .unwrap_or_else(|e| panic!("'{s}' should be valid: {e}"));
+      assert_eq!(&*name, s);
+    }
+  }
+
+  #[test]
+  fn component_name_rejects_empty() {
+    assert!(ComponentName::from_str("").is_err());
+  }
+
+  #[test]
+  fn component_name_rejects_uppercase_space_and_specials() {
+    for s in [
+      "UPPER",
+      "with space",
+      "under_score",
+      "dot.name",
+      "na\u{00EF}ve",
+    ] {
+      assert!(
+        ComponentName::from_str(s).is_err(),
+        "'{s}' should be rejected"
+      );
+    }
+  }
+}

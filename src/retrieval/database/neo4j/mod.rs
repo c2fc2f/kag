@@ -82,6 +82,11 @@ pub async fn retrieve_with_embedding(
     index, top_k
   );
 
+  // `index`, `top_k` and `embed` are passed as query parameters.
+  // `neighborhood` is interpolated into the query text instead, because
+  // Cypher does not allow variable-length path bounds (`*0..N`) to be
+  // parameterized. This is safe from injection: `neighborhood` is a `u32`
+  // and can only render as digits
   let query = query(&format!(
     "
       CALL db.index.vector.queryNodes($index, $top_k, $embed) \

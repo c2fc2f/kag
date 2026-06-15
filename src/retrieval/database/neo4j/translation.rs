@@ -75,12 +75,6 @@ impl<'a> std::hash::Hash for QuerySet<'a> {
 /// translated rows if successful, or a `neo4rs::Error` if reading from the
 /// underlying stream fails, or a `neo4rs::DeError` if there was a
 /// deserialization error.
-///
-/// # Panics
-///
-/// * Panics if the stream yields a row that is missing the expected
-///   `"source"`, `"predicate"`, or `"target"` fields, or if those fields
-///   cannot be cast to `Node`, `String`, and `Node` respectively.
 pub async fn process_translation(
   translation: &Neo4jTranslationStrategy,
   mut stream: impl Stream<Item = Result<Row, neo4rs::Error>> + Unpin,
@@ -493,4 +487,3 @@ mod tests {
     assert_eq!(map.get(&QuerySet(&labels)), Some(&"hit"));
   }
 }
-
