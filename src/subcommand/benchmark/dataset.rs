@@ -49,14 +49,22 @@ pub struct DatasetEntry {
 /// Additional variants may be added in the future; match exhaustively with a
 /// wildcard arm.
 #[derive(Deserialize, Debug)]
-#[serde(tag = "type", content = "options")]
+#[serde(tag = "type")]
 #[non_exhaustive]
 pub enum Output {
-  /// Multiple-choice output: a map of option identifiers to their label or
-  /// description.
+  /// A multiple-choice question (MCQ) output format.
   ///
-  /// Keys are option identifiers (e.g. `"A"`, `"B"`) and values are the
-  /// corresponding option texts.
+  /// This variant provides a collection of selectable options and explicitly
+  /// defines which of those options is the correct answer.
   #[serde(rename = "MCQ")]
-  Mcq(BTreeMap<String, String>),
+  Mcq {
+    /// A map associating option identifiers with their descriptive text.
+    ///
+    /// Keys represent the identifier (e.g., `"A"`, `"1"`, `"True"`), and
+    /// values are the corresponding human-readable labels.
+    options: BTreeMap<String, String>,
+    /// The identifier representing the correct option from the `options` map.
+    #[allow(dead_code)]
+    answer: Option<String>,
+  },
 }

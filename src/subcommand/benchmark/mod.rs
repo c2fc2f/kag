@@ -196,8 +196,8 @@ async fn execute_benchmark(
 
     match &question.output {
       None => (),
-      Some(Output::Mcq(choices)) => {
-        let choices = choices.iter().fold(String::new(), |mut acc, (k, v)| {
+      Some(Output::Mcq { options, answer: _ }) => {
+        let choices = options.iter().fold(String::new(), |mut acc, (k, v)| {
           if !acc.is_empty() {
             acc.push('\n')
           }
