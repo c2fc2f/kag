@@ -6,7 +6,6 @@
 //! validation on component names and automatically handles fallback URLs and
 //! credentials for supported services
 
-use core::fmt;
 use std::{
   collections::BTreeSet, fmt::Debug, fs, ops::Deref, path::Path, str::FromStr,
 };
@@ -14,7 +13,9 @@ use std::{
 use anyhow::Context;
 use hashbrown::HashMap;
 use minijinja::Environment;
-use serde::{Deserialize, Deserializer, Serialize, de::DeserializeOwned};
+use serde::{Deserialize, Deserializer, de::DeserializeOwned};
+
+use crate::cli::component::ComponentName;
 
 /// Structure for the configuration of the program
 ///
@@ -33,84 +34,6 @@ pub struct Config {
   /// A map of data retrievers used for RAG operations
   #[serde(default)]
   pub retrievers: HashMap<ComponentName, Retriever>,
-}
-
-/// A validated, strictly formatted component identifier.
-///
-/// This type wraps a `String` and guarantees that the identifier complies
-/// with system constraints upon deserialization. It implements [`Deref`] to
-/// allow seamless usage as a standard string slice (`&str`)
-///
-/// # Validation Rules
-/// - Cannot be empty
-/// - No spaces allowed
-/// - No special characters allowed (except hyphens)
-/// - Strictly lowercase alphanumeric characters (`a-z`, `0-9`, `-`)
-#[derive(Hash, PartialEq, Eq, PartialOrd, Ord, Clone)]
-pub struct ComponentName(String);
-
-impl FromStr for ComponentName {
-  type Err = String;
-
-  fn from_str(s: &str) -> Result<Self, Self::Err> {
-    if s.is_empty() {
-      return Err("Component name cannot be empty".to_string());
-    }
-
-    if !s
-      .chars()
-      .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
-    {
-      return Err(
-        "\
-          Component name must contain only lowercase alphanumeric \
-          characters and hyphens\
-        "
-        .to_string(),
-      );
-    }
-
-    Ok(Self(s.to_string()))
-  }
-}
-
-impl<'de> Deserialize<'de> for ComponentName {
-  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-  where
-    D: Deserializer<'de>,
-  {
-    Self::from_str(&String::deserialize(deserializer)?)
-      .map_err(serde::de::Error::custom)
-  }
-}
-
-impl Serialize for ComponentName {
-  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-  where
-    S: serde::Serializer,
-  {
-    serializer.serialize_str(&self.0)
-  }
-}
-
-impl Deref for ComponentName {
-  type Target = str;
-
-  fn deref(&self) -> &Self::Target {
-    &self.0
-  }
-}
-
-impl fmt::Debug for ComponentName {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    fmt::Debug::fmt(&self.0, f)
-  }
-}
-
-impl fmt::Display for ComponentName {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    fmt::Display::fmt(&self.0, f)
-  }
 }
 
 /// Represents a supported AI service provider.
@@ -487,4 +410,190 @@ where
 
   toml::from_str(&rendered)
     .context("The configuration file could not be parsed as valid TOML")
+}
+
+#[cfg(test)]
+#[allow(clippy::missing_docs_in_private_items)]
+mod tests {
+  use std::{collections::BTreeSet, str::FromStr};
+
+  use super::*;
+
+  // ---- parse_template ----
+
+  #[test]
+  fn parse_template_empty_input_yields_no_tokens() {
+    assert_eq!(parse_template("").unwrap(), FormatTemplate(vec![]));
+  }
+
+  #[test]
+  fn parse_template_plain_literal() {
+    assert_eq!(
+      parse_template("hello world").unwrap(),
+      FormatTemplate(vec![FormatToken::Literal("hello world".into())])
+    );
+  }
+
+  #[test]
+  fn parse_template_single_property() {
+    assert_eq!(
+      parse_template("{name}").unwrap(),
+      FormatTemplate(vec![FormatToken::Property("name".into())])
+    );
+  }
+
+  #[test]
+  fn parse_template_literal_then_property() {
+    assert_eq!(
+      parse_template("the actor {name}").unwrap(),
+      FormatTemplate(vec![
+        FormatToken::Literal("the actor ".into()),
+        FormatToken::Property("name".into()),
+      ])
+    );
+  }
+
+  #[test]
+  fn parse_template_adjacent_properties_have_no_literal_between() {
+    assert_eq!(
+      parse_template("{a}{b}").unwrap(),
+      FormatTemplate(vec![
+        FormatToken::Property("a".into()),
+        FormatToken::Property("b".into()),
+      ])
+    );
+  }
+
+  #[test]
+  fn parse_template_interleaved_relation_format() {
+    assert_eq!(
+      parse_template("{FROM} acted in {role} during {year} in {TO}").unwrap(),
+      FormatTemplate(vec![
+        FormatToken::Property("FROM".into()),
+        FormatToken::Literal(" acted in ".into()),
+        FormatToken::Property("role".into()),
+        FormatToken::Literal(" during ".into()),
+        FormatToken::Property("year".into()),
+        FormatToken::Literal(" in ".into()),
+        FormatToken::Property("TO".into()),
+      ])
+    );
+  }
+
+  #[test]
+  fn parse_template_rejects_nested_open_brace() {
+    let err = parse_template("{a{b}").unwrap_err();
+    assert!(err.contains("nested"), "unexpected error: {err}");
+  }
+
+  #[test]
+  fn parse_template_rejects_unmatched_close_brace() {
+    let err = parse_template("a}b").unwrap_err();
+    assert!(
+      err.contains("without a matching"),
+      "unexpected error: {err}"
+    );
+  }
+
+  #[test]
+  fn parse_template_rejects_empty_property() {
+    let err = parse_template("{}").unwrap_err();
+    assert!(err.contains("empty property"), "unexpected error: {err}");
+  }
+
+  #[test]
+  fn parse_template_rejects_missing_close_brace() {
+    let err = parse_template("{name").unwrap_err();
+    assert!(err.contains("missing closing"), "unexpected error: {err}");
+  }
+
+  #[test]
+  fn parse_template_has_no_brace_escaping() {
+    // Documents current behaviour: there is no escape, so a literal '{'
+    // cannot be emitted and "{{" is a (nested) error.
+    assert!(parse_template("{{").is_err());
+  }
+
+  // ---- ComponentName ----
+
+  #[test]
+  fn component_name_accepts_lowercase_digits_and_hyphen() {
+    for s in ["abc", "a", "123", "valid-name-123", "-"] {
+      let name = ComponentName::from_str(s)
+        .unwrap_or_else(|e| panic!("'{s}' should be valid: {e}"));
+      assert_eq!(&*name, s);
+    }
+  }
+
+  #[test]
+  fn component_name_rejects_empty() {
+    assert!(ComponentName::from_str("").is_err());
+  }
+
+  #[test]
+  fn component_name_rejects_uppercase_space_and_specials() {
+    for s in [
+      "UPPER",
+      "with space",
+      "under_score",
+      "dot.name",
+      "na\u{00EF}ve",
+    ] {
+      assert!(
+        ComponentName::from_str(s).is_err(),
+        "'{s}' should be rejected"
+      );
+    }
+  }
+
+  // ---- LabelSet ----
+
+  fn label_set(items: &[&str]) -> BTreeSet<String> {
+    items.iter().map(|s| s.to_string()).collect()
+  }
+
+  #[test]
+  fn label_set_single_label() {
+    assert_eq!(
+      LabelSet::from_str("Person").unwrap().0,
+      label_set(&["Person"])
+    );
+  }
+
+  #[test]
+  fn label_set_splits_on_colon() {
+    assert_eq!(
+      LabelSet::from_str("Person:Actor").unwrap().0,
+      label_set(&["Actor", "Person"])
+    );
+  }
+
+  #[test]
+  fn label_set_trims_whitespace() {
+    assert_eq!(
+      LabelSet::from_str(" Person : Actor ").unwrap().0,
+      label_set(&["Actor", "Person"])
+    );
+  }
+
+  #[test]
+  fn label_set_drops_empty_segments() {
+    assert_eq!(
+      LabelSet::from_str(":Person::Actor:").unwrap().0,
+      label_set(&["Actor", "Person"])
+    );
+  }
+
+  #[test]
+  fn label_set_deduplicates() {
+    let set = LabelSet::from_str("A:A:A").unwrap();
+    assert_eq!(set.0.len(), 1);
+    assert_eq!(set.0, label_set(&["A"]));
+  }
+
+  #[test]
+  fn label_set_empty_input_is_empty_set() {
+    assert!(LabelSet::from_str("").unwrap().0.is_empty());
+    assert!(LabelSet::from_str("   ").unwrap().0.is_empty());
+  }
 }

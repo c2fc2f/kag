@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use crate::config::ComponentName;
+use crate::cli::component::ComponentName;
 
 /// A collection of evaluation entries, grouped by nested component names.
 ///

@@ -9,7 +9,7 @@ use std::collections::BTreeSet;
 use hashbrown::HashMap;
 use serde::Deserialize;
 
-use crate::{config::ComponentName, generation};
+use crate::cli::{component::ComponentName, generation::Generation};
 
 /// A collection of benchmark entries, keyed by component name.
 ///
@@ -36,7 +36,7 @@ pub struct BenchmarkEntry {
   ///
   /// This includes provider settings, hyperparameters, and prompt templates
   #[serde(flatten)]
-  pub config: generation::config::Generation,
+  pub config: Generation,
   /// System prompt template used to structure context and the user question
   ///
   /// - `{{INPUT}}` is replaced by the user's input prompt

@@ -47,11 +47,6 @@ use crate::{
 /// * The connection to the Neo4j database fails.
 /// * The vector index does not exist or the embedding dimensions mismatch.
 /// * Stream processing or translation formatting encounters an error.
-///
-/// # Panics
-///
-/// Panics if the `ConfigBuilder` fails to instantiate despite all credentials
-/// being supplied.
 #[allow(clippy::too_many_arguments)]
 pub async fn retrieve_with_embedding(
   uri: &str,

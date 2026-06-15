@@ -8,43 +8,12 @@
 //! is augmented with external context (KAG/RAG workflow) before querying the
 //! model
 
-use std::{fs, path::PathBuf, process::ExitCode};
+use std::{fs, process::ExitCode};
 
-use clap_stdin::MaybeStdin;
 use log::debug;
 use minijinja::Environment;
 
-use crate::{config::Config, generation::config::Generation, match_err};
-
-/// Command-line arguments for the generation run
-#[derive(clap::Args, Debug)]
-pub struct Args {
-  /// The underlying text generation and model configuration
-  ///
-  /// This includes provider settings, hyperparameters, and prompt templates
-  #[command(flatten)]
-  generation: Generation,
-
-  /// The system prompt template to structure the context and question
-  ///
-  /// Any instance of `{{INPUT}}` will be replaced by the user's input
-  /// prompt.
-  /// If Knowledge-Augmented Generation (KAG/RAG) is enabled (by providing a
-  /// retriever), any instance of `{{RETRIEVAL}}` will be replaced by the
-  /// retrieved context.
-  #[arg(short, long, value_name = "FILE")]
-  system_prompt: Option<PathBuf>,
-
-  /// The user's input prompt
-  ///
-  /// You can provide the prompt directly as a standard argument. To pipe or
-  /// read the prompt from standard input, you must explicitly pass `-` as the
-  /// argument.
-  ///
-  /// This value will be injected into the `{{INPUT}}` placeholder within
-  /// the system prompt.
-  prompt: MaybeStdin<String>,
-}
+use crate::{cli::generation::Args, config::Config, match_err};
 
 /// Executes the generation command with the provided arguments and
 /// configuration.

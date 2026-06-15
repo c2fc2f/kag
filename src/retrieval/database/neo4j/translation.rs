@@ -28,6 +28,33 @@ use crate::{
   retrieval::database::{Output, Stats},
 };
 
+/// A borrowed view over a set of node labels, used to look up entries in the
+/// label-keyed format maps without allocating an owned [`LabelSet`].
+///
+/// It implements [`Equivalent<LabelSet>`] and [`Hash`] so that it hashes and
+/// compares identically to a [`LabelSet`] holding the same labels. This relies
+/// on the invariant that the wrapped set is sorted (a [`BTreeSet`]), matching
+/// [`LabelSet`]'s own ordering.
+struct QuerySet<'a>(
+  /// The borrowed, sorted set of labels to look up.
+  &'a BTreeSet<&'a str>,
+);
+
+impl<'a> Equivalent<LabelSet> for QuerySet<'a> {
+  fn equivalent(&self, key: &LabelSet) -> bool {
+    if self.0.len() != key.len() {
+      return false;
+    }
+    self.0.iter().zip(key.iter()).all(|(&a, b)| a == b.as_str())
+  }
+}
+
+impl<'a> std::hash::Hash for QuerySet<'a> {
+  fn hash<H: Hasher>(&self, state: &mut H) {
+    self.0.hash(state);
+  }
+}
+
 /// Processes an asynchronous stream of Neo4j database rows into a formatted
 /// string.
 ///
@@ -58,23 +85,6 @@ pub async fn process_translation(
   translation: &Neo4jTranslationStrategy,
   mut stream: impl Stream<Item = Result<Row, neo4rs::Error>> + Unpin,
 ) -> anyhow::Result<Output> {
-  struct QuerySet<'a>(&'a BTreeSet<&'a str>);
-
-  impl<'a> Equivalent<LabelSet> for QuerySet<'a> {
-    fn equivalent(&self, key: &LabelSet) -> bool {
-      if self.0.len() != key.len() {
-        return false;
-      }
-      self.0.iter().zip(key.iter()).all(|(&a, b)| a == b.as_str())
-    }
-  }
-
-  impl<'a> std::hash::Hash for QuerySet<'a> {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-      self.0.hash(state);
-    }
-  }
-
   let start = Instant::now();
   let mut buf = String::new();
   let mut vertices = 0u32;
@@ -435,3 +445,52 @@ impl FormatTemplate {
     properties
   }
 }
+
+#[cfg(test)]
+#[allow(clippy::missing_docs_in_private_items)]
+mod tests {
+  use std::{collections::BTreeSet, str::FromStr};
+
+  use hashbrown::HashMap;
+
+  use super::*;
+
+  #[test]
+  fn queryset_matches_equivalent_label_set_in_map() {
+    let mut map: HashMap<LabelSet, &'static str> = HashMap::new();
+    map.insert(LabelSet::from_str("Person:Actor").unwrap(), "hit");
+
+    // Declared in a different order and borrowed as &str rather than owned
+    // String: the lookup must still resolve to the same entry.
+    let labels: BTreeSet<&str> = ["Actor", "Person"].into_iter().collect();
+    assert_eq!(map.get(&QuerySet(&labels)), Some(&"hit"));
+  }
+
+  #[test]
+  fn queryset_does_not_match_on_size_mismatch() {
+    let mut map: HashMap<LabelSet, &'static str> = HashMap::new();
+    map.insert(LabelSet::from_str("Person").unwrap(), "hit");
+
+    let labels: BTreeSet<&str> = ["Person", "Actor"].into_iter().collect();
+    assert_eq!(map.get(&QuerySet(&labels)), None);
+  }
+
+  #[test]
+  fn queryset_does_not_match_on_label_difference() {
+    let mut map: HashMap<LabelSet, &'static str> = HashMap::new();
+    map.insert(LabelSet::from_str("Person").unwrap(), "hit");
+
+    let labels: BTreeSet<&str> = ["Movie"].into_iter().collect();
+    assert_eq!(map.get(&QuerySet(&labels)), None);
+  }
+
+  #[test]
+  fn queryset_empty_label_set_matches_empty() {
+    let mut map: HashMap<LabelSet, &'static str> = HashMap::new();
+    map.insert(LabelSet::from_str("").unwrap(), "hit");
+
+    let labels: BTreeSet<&str> = BTreeSet::new();
+    assert_eq!(map.get(&QuerySet(&labels)), Some(&"hit"));
+  }
+}
+

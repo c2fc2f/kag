@@ -5,19 +5,19 @@ edition = "2024"
 authors = ["c2fc2f <contact@c2fc2f.com>"]
 description = "A comprehensive toolkit for Knowledge Graph Enhanced Retrieval-Augmented Generation (KAG), featuring generation pipelines and evaluation benchmarks"
 readme = "README.md"
-repository = "https://github.com/c2fc2f/KAG"
+repository = "https://github.com/c2fc2f/kag"
 license = "MIT"
 keywords = [
-    "knowledge-graph",
-    "rag",
-    "generation",
-    "benchmark",
-    "neo4j"
+  "knowledge-graph",
+  "rag",
+  "generation",
+  "benchmark",
+  "neo4j"
 ]
 categories = [
-    "command-line-utilities",
-    "database",
-    "development-tools::evaluation"
+  "command-line-utilities",
+  "database",
+  "development-tools::evaluation"
 ]
 
 [profile.release]
@@ -38,6 +38,7 @@ missing_panics_doc = "warn"
 clap = { version = "4", features = [ "derive" ] }
 clap-verbosity-flag = "3"
 clap-stdin = "0.8"
+clap_complete = "4"
 serde = { version = "1", features = [ "derive" ] }
 serde_json = "1"
 toml = "1"
@@ -54,3 +55,12 @@ async-stream = "0.3"
 hashbrown = { version = "0.17", features = ["serde"] }
 itertools = "0.14"
 rustls = { version = "0.23", features = ["ring"] }
+
+[build-dependencies]
+clap = { version = "4", features = [ "derive", "string" ] }
+clap_mangen = "0.3"
+clap-verbosity-flag = "3"
+clap-stdin = "0.8"
+clap_complete = "4"
+serde = { version = "1", features = [ "derive" ] }
+

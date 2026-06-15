@@ -9,24 +9,19 @@ mod config;
 mod dataset;
 mod result;
 
-use std::{
-  num::NonZero,
-  ops::Deref,
-  path::{Path, PathBuf},
-  process::ExitCode,
-  sync::Arc,
-};
+use std::{ops::Deref, path::Path, process::ExitCode, sync::Arc};
 
 use futures::{StreamExt, stream};
 use log::{debug, error, info, trace};
 use minijinja::Environment;
 use tokio::{
-  fs::{OpenOptions, create_dir_all, metadata, try_exists},
+  fs::{OpenOptions, create_dir_all, metadata, rename, try_exists},
   io::AsyncWriteExt,
 };
 
 use crate::{
-  config::{ComponentName, Config, load_config},
+  cli::{benchmark::Args, component::ComponentName},
+  config::{Config, load_config},
   match_err,
   subcommand::benchmark::{
     self,
@@ -34,36 +29,6 @@ use crate::{
     dataset::{DatasetEntry, Datasets, Output},
   },
 };
-
-/// Command-line arguments for the benchmark execution
-#[derive(clap::Args, Debug)]
-pub struct Args {
-  /// Path to the JSON file containing the collection of evaluation datasets
-  #[arg(short, long)]
-  pub datasets: PathBuf,
-
-  /// Path to the configuration file defining the different techniques and
-  /// models to benchmark
-  #[arg(short, long)]
-  pub benchmark: PathBuf,
-
-  /// Number of parallel tasks to use for the benchmark execution
-  #[arg(short, long, default_value = "1")]
-  pub parallel: NonZero<usize>,
-
-  /// Flag to resume a previously interrupted benchmark run, preserving
-  /// existing result files instead of overwriting them
-  #[arg(short, long, action)]
-  pub r#continue: bool,
-
-  /// Directory path where the generated benchmark result files will be saved
-  #[arg(short, long, default_value = ".")]
-  pub output: PathBuf,
-
-  /// Optional naming prefix to append to the generated JSON result filenames
-  #[arg(long, default_value = "")]
-  pub prefix: String,
-}
 
 /// Executes the benchmark lifecycle with the provided arguments and system
 /// configuration
@@ -213,11 +178,13 @@ async fn execute_benchmark(
       continue;
     }
 
+    let tmp_path = path.with_added_extension("tmp");
+
     let mut f = OpenOptions::new()
       .write(true)
       .create(true)
       .truncate(true)
-      .open(path)
+      .open(&tmp_path)
       .await?;
 
     debug!(
@@ -268,6 +235,7 @@ async fn execute_benchmark(
     let json_bytes = serde_json::to_vec_pretty(&response)?;
     f.write_all(&json_bytes).await?;
     f.flush().await?;
+    rename(tmp_path, path).await?;
 
     trace!(
       "[Dataset: {}] Successfully completed setup '{}' for question '{}'",

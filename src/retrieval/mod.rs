@@ -13,7 +13,10 @@ use log::{debug, info, trace};
 use rig_core::embeddings::Embedding;
 use serde::Serialize;
 
-use crate::config::{ComponentName, Database, Provider, Retriever};
+use crate::{
+  cli::component::ComponentName,
+  config::{Database, Provider, Retriever},
+};
 
 mod database;
 

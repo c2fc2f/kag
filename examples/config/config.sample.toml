@@ -12,14 +12,17 @@ type = "Neo4j"
 password = "{{ env('NEO4J_PASSWORD') or 'neo4j' }}"
 
 [retrievers.neo4j-embedding-triplet-formal]
-type = "EmbedderNeo4j"
+type = "Embedder"
 provider = "ollama"
 model = "embeddinggemma:latest"
 top_k = 7
-extra.neo4j.index = "NODE_INDEX"
+extra.neo4j = {
+  type = "Neo4j",
+  index = "NODE_INDEX"
+}
 
 [retrievers.neo4j-embedding-triplet-text]
-type = "EmbedderNeo4j"
+type = "Embedder"
 provider = "ollama"
 model = "embeddinggemma:latest"
 top_k = 7
