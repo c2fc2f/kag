@@ -127,7 +127,7 @@ pub enum Retriever {
     #[serde(default = "default_top_k")]
     top_k: u32,
 
-    /// Database-specific configuration extensions for the retriever, bykeyed
+    /// Database-specific configuration extensions for the retriever, by keyed
     /// by the targeted database name
     #[serde(default)]
     extra: HashMap<ComponentName, RetrieverExtra>,
@@ -182,7 +182,7 @@ pub enum Neo4jTranslationStrategy {
     /// Example: {"Person"} -> ["age", "birthplace"]
     /// Yields:
     ///   `(Albert_Einstein)-[age]->(76)`
-    ///   `(Albert_Einstein)-[birthplace]->(Ulm)`
+    ///   `(Albert_Einstein)-[birthplace]->("Ulm")`
     #[serde(default)]
     property_filters: HashMap<LabelSet, Vec<String>>,
 

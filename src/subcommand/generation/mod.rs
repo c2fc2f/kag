@@ -1,5 +1,4 @@
-//! Command implementation for the retrieval and processing workflow. Command
-//! implementation for text generation, supporting optional
+//! Command implementation for text generation, supporting optional
 //! Knowledge-Augmented Generation (KAG)
 //!
 //! This module handles the execution of text generation tasks based on user

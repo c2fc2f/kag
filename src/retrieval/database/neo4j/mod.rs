@@ -88,11 +88,15 @@ pub async fn retrieve_with_embedding(
   // parameterized. This is safe from injection: `neighborhood` is a `u32`
   // and can only render as digits
   let query = query(&format!(
-    "
+    "\
       CALL db.index.vector.queryNodes($index, $top_k, $embed) \
       YIELD node \
-      MATCH p = (node)-[*0..{neighborhood}]-(neighbor) \
-      UNWIND relationships(p) AS rel
+      MATCH (node)-[*0..{neighborhood}]-(reachable) \
+      WITH collect(DISTINCT reachable) AS nodes \
+      UNWIND nodes AS n \
+      MATCH (n)-[rel]->(m) \
+      WHERE m IN nodes \
+      WITH DISTINCT rel \
       RETURN \
         startNode(rel) AS source, \
         rel AS predicate, \

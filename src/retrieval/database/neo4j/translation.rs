@@ -56,25 +56,46 @@ impl<'a> std::hash::Hash for QuerySet<'a> {
 }
 
 /// Processes an asynchronous stream of Neo4j database rows into a formatted
-/// string.
+/// [`Output`].
 ///
 /// This function consumes a stream of `neo4rs::Row` results and translates
 /// them into a concatenated string representation based on the provided
-/// [`Neo4jTranslationStrategy`].
+/// [`Neo4jTranslationStrategy`], returning that text alongside translation
+/// statistics (see [`Output`] / [`Stats::Neo4j`]).
 ///
 /// # Arguments
 ///
 /// * `translation` - A reference to the strategy dictating how the nodes and
 ///   relationships should be formatted into text.
 /// * `stream` - An asynchronous stream yielding `Result<Row, neo4rs::Error>`.
-///   It must implement `Unpin` to be safely polled within the loop.
+///   It must implement [`Unpin`] to be safely polled within the loop.
 ///
 /// # Returns
 ///
-/// Returns a `Result` containing the fully concatenated `String` of
-/// translated rows if successful, or a `neo4rs::Error` if reading from the
-/// underlying stream fails, or a `neo4rs::DeError` if there was a
-/// deserialization error.
+/// On success, returns an [`Output`] bundling both the rendered text and the
+/// metrics gathered while producing it:
+/// * `result` - the fully concatenated [`String`] of all translated rows,
+///   formatted according to the selected [`Neo4jTranslationStrategy`].
+/// * `stats` - a [`Stats::Neo4j`] record holding the number of distinct
+///   `vertices`, the number of `relationships`, and the number of
+///   `properties` emitted, together with the total wall-clock `time` spent
+///   draining the stream.
+///
+/// # Errors
+///
+/// The error type is [`anyhow::Error`] (returned through [`anyhow::Result`]),
+/// not a `neo4rs` error directly. Lower-level failures are wrapped with
+/// contextual messages. An error is returned when:
+/// * polling `stream` yields an `Err` (the underlying `neo4rs::Error` is
+///   wrapped with the index of the row that failed), or
+/// * a row is missing one of the expected `source`, `predicate`, or `target`
+///   columns, or those columns cannot be deserialized into [`Node`] /
+///   [`Relation`].
+///
+/// Per-property lookup failures encountered while rendering are *not* fatal:
+/// they are logged at the `warn` level and skipped. A successful call may
+/// therefore still have written `{key}` placeholders for properties that were
+/// requested by a template but absent on the node or relationship.
 pub async fn process_translation(
   translation: &Neo4jTranslationStrategy,
   mut stream: impl Stream<Item = Result<Row, neo4rs::Error>> + Unpin,

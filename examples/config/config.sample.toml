@@ -1,6 +1,6 @@
 [providers.ollama]
 type = "Ollama"
-url = "https://openai.example.com"
+url = "https://ollama.example.com"
 
 [providers.openai]
 type = "OpenAI"

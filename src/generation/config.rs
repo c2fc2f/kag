@@ -59,7 +59,7 @@ impl Generation {
   ///   the configuration.
   /// - The backend model fails to initialize.
   /// - The retrieval phase fails during database interaction.
-  /// - The completion model fails to stream or return a complete response.
+  /// - The completion model fails to return a complete response.
   ///
   /// # Examples
   ///
@@ -147,10 +147,18 @@ impl Generation {
           "
         );
 
-        let ret = r.retrieve(prompt.as_ref(), &config.providers, d, d_name,).await.with_context(|| format!(
-          "Failed during the knowledge retrieval phase (KAG) on database '{}'",
-          d_name
-        ))?;
+        let ret = r
+          .retrieve(prompt.as_ref(), &config.providers, d, d_name)
+          .await
+          .with_context(|| {
+            format!(
+              "\
+                Failed during the knowledge retrieval phase (KAG) on \
+                database '{}'\
+              ",
+              d_name
+            )
+          })?;
 
         if !ret.result.is_empty() {
           environment.add_global("RETRIEVAL", &ret.result);
