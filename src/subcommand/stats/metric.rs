@@ -1,4 +1,12 @@
-//! wip
+//! This module provides structures and logic for aggregating, calculating,
+//! and serializing benchmark metrics.
+//!
+//! It enables tracking grading outcomes (`Correct`, `Incorrect`, `Error`),
+//! generation performance, and optional retrieval statistics across benchmark
+//! result files. The module provides high-level reporting structure
+//! (`Report`, `SetupReport`) and implementation for calculating derived
+//! statistics such as accuracy, precision, and coverage, ensuring they are
+//! readily available for export through JSON serialization.
 
 use std::{collections::BTreeMap, time::Duration};
 
