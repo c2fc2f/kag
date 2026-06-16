@@ -4,6 +4,7 @@ pub mod benchmark;
 pub mod completion;
 pub mod component;
 pub mod generation;
+pub mod stats;
 
 use clap::{Parser, Subcommand};
 use clap_verbosity_flag::Verbosity;
@@ -16,10 +17,6 @@ pub struct Args {
   /// The specific operation to perform with the toolkit
   #[command(subcommand)]
   pub command: Command,
-
-  /// Path to the config file
-  #[arg(short, long, global = true, default_value = "config.toml")]
-  pub config: std::path::PathBuf,
 
   /// Control the output verbosity (-v, -q)
   #[command(flatten)]
@@ -44,6 +41,14 @@ pub enum Command {
   /// interrupted runs, and saving the evaluation metrics to a target output
   /// directory
   Benchmark(benchmark::Args),
+  /// Compute accuracy and precision statistics from a benchmark result tree
+  ///
+  /// This subcommand grades the result files produced by the `benchmark`
+  /// subcommand against the ground truth in the datasets file. For every
+  /// question that defines an `output`, it extracts the option the model
+  /// committed to, compares it against the expected answer, and reports
+  /// per-setup accuracy, precision, and coverage as a table or as JSON
+  Stats(stats::Args),
   /// Print shell completions and exit
   #[command(hide = true)]
   Completion(completion::Args),

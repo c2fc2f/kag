@@ -12,7 +12,11 @@ use std::{fs, process::ExitCode};
 use log::debug;
 use minijinja::Environment;
 
-use crate::{cli::generation::Args, config::Config, match_err};
+use crate::{
+  cli::generation::Args,
+  config::{Config, load_config},
+  match_err,
+};
 
 /// Executes the generation command with the provided arguments and
 /// configuration.
@@ -21,18 +25,23 @@ use crate::{cli::generation::Args, config::Config, match_err};
 ///
 /// * `args` - The parsed command-line arguments containing the user's prompt
 ///   and component targets.
-/// * `config` - The application configuration containing the available
-///   component definitions.
 ///
 /// # Returns
 ///
 /// Returns `ExitCode::SUCCESS` on successful generation, `ExitCode::FAILURE`
 /// otherwise.
-pub fn run(args: Args, config: Config) -> ExitCode {
+pub fn run(args: Args) -> ExitCode {
   let rt = tokio::runtime::Builder::new_current_thread()
     .enable_all()
     .build()
     .expect("Failed building the Runtime");
+
+  let config: Config = match_err!(
+    load_config(args.config),
+    "Unable to load the configuration file"
+  );
+
+  debug!("Final configuration: {config:?}");
 
   let _ = rustls::crypto::ring::default_provider().install_default();
 

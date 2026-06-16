@@ -5,9 +5,9 @@
 //! orchestration via Tokio, concurrent task scheduling, and outputs the
 //! final evaluated metrics into structured JSON result files
 
-mod config;
-mod dataset;
-mod result;
+pub mod config;
+pub mod dataset;
+pub mod result;
 
 use std::{ops::Deref, path::Path, process::ExitCode, sync::Arc};
 
@@ -37,19 +37,24 @@ use crate::{
 ///
 /// * `args` - The parsed command-line arguments containing paths and runtime
 ///   constraints
-/// * `config` - The global system configuration containing component
-///   definitions
 ///
 /// # Returns
 ///
 /// Returns `ExitCode::SUCCESS` if the orchestrator finishes its loop,
 /// regardless of individual task failures (which are logged as errors)
-pub fn run(args: Args, config: Config) -> ExitCode {
+pub fn run(args: Args) -> ExitCode {
   let rt = tokio::runtime::Builder::new_multi_thread()
     .enable_all()
     .worker_threads(args.parallel.get())
     .build()
     .expect("Failed building the Runtime");
+
+  let config: Config = match_err!(
+    load_config(args.config),
+    "Unable to load the configuration file"
+  );
+
+  debug!("Final configuration: {config:?}");
 
   let _ = rustls::crypto::ring::default_provider().install_default();
 

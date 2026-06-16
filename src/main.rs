@@ -7,16 +7,16 @@ mod generation;
 mod retrieval;
 mod subcommand;
 
-use std::{io::Write, process::ExitCode};
+use std::{
+  io::{Write, stdout},
+  process::ExitCode,
+};
 
 use clap::{CommandFactory, Parser};
 use clap_complete::generate;
-use log::{LevelFilter, debug};
+use log::LevelFilter;
 
-use crate::{
-  cli::Command,
-  config::{Config, load_config},
-};
+use crate::cli::Command;
 
 /// Unwraps a Result::Ok, or logs the error and returns ExitCode::FAILURE.
 #[macro_export]
@@ -34,13 +34,6 @@ macro_rules! match_err {
 
 fn main() -> ExitCode {
   let args = cli::Args::parse();
-
-  if let Command::Completion(a) = args.command {
-    let mut cmd = cli::Args::command();
-    let name = cmd.get_name().to_string();
-    generate(a.shell, &mut cmd, name, &mut std::io::stdout());
-    return ExitCode::SUCCESS;
-  }
 
   let log_level = args.verbosity.log_level_filter();
   let mut builder = env_logger::Builder::new();
@@ -66,16 +59,15 @@ fn main() -> ExitCode {
   });
   builder.init();
 
-  let config: Config = match_err!(
-    load_config(args.config),
-    "Unable to load the configuration file"
-  );
-
-  debug!("Final configuration: {config:?}");
-
   match args.command {
-    Command::Generation(args) => subcommand::generation::run(args, config),
-    Command::Benchmark(args) => subcommand::benchmark::run(args, config),
-    Command::Completion(_) => unreachable!(),
+    Command::Generation(a) => subcommand::generation::run(a),
+    Command::Benchmark(a) => subcommand::benchmark::run(a),
+    Command::Stats(a) => subcommand::stats::run(a),
+    Command::Completion(a) => {
+      let mut cmd = cli::Args::command();
+      let name = cmd.get_name().to_string();
+      generate(a.shell, &mut cmd, name, &mut stdout());
+      ExitCode::SUCCESS
+    }
   }
 }

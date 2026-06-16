@@ -102,9 +102,9 @@ pub async fn process_translation(
 ) -> anyhow::Result<Output> {
   let start = Instant::now();
   let mut buf = String::new();
-  let mut vertices = 0u32;
-  let mut relationships = 0u32;
-  let mut properties = 0u32;
+  let mut vertices = 0;
+  let mut relationships = 0;
+  let mut properties = 0;
   let mut row_count = 0usize;
 
   info!("Starting Neo4j stream translation process.");
@@ -281,7 +281,7 @@ pub async fn process_translation(
         let target_labels: BTreeSet<_> = target.labels().into_iter().collect();
 
         let mut source_text = String::new();
-        let mut source_props = 0u32;
+        let mut source_props = 0;
         if let Some(template) = node_formats.get(&QuerySet(&source_labels)) {
           source_props = template.render_node(&source, &mut source_text);
         } else {
@@ -296,7 +296,7 @@ pub async fn process_translation(
         }
 
         let mut target_text = String::new();
-        let mut target_props = 0u32;
+        let mut target_props = 0;
         if let Some(template) = node_formats.get(&QuerySet(&target_labels)) {
           target_props = template.render_node(&target, &mut target_text);
         } else {
@@ -376,8 +376,8 @@ pub async fn process_translation(
 
 impl FormatTemplate {
   /// Renders a node directly into the provided buffer
-  pub fn render_node(&self, node: &Node, buf: &mut String) -> u32 {
-    let mut properties = 0u32;
+  pub fn render_node(&self, node: &Node, buf: &mut String) -> usize {
+    let mut properties = 0;
 
     for token in &self.0 {
       match token {
@@ -408,8 +408,8 @@ impl FormatTemplate {
     from: &str,
     to: &str,
     buf: &mut String,
-  ) -> u32 {
-    let mut properties = 0u32;
+  ) -> usize {
+    let mut properties = 0;
 
     for token in &self.0 {
       match token {
@@ -444,8 +444,8 @@ impl FormatTemplate {
     node: &Node,
     from: &str,
     buf: &mut String,
-  ) -> u32 {
-    let mut properties = 0u32;
+  ) -> usize {
+    let mut properties = 0;
 
     for token in &self.0 {
       match token {

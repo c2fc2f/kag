@@ -35,4 +35,8 @@ pub struct Args {
   /// Optional naming prefix to append to the generated JSON result filenames
   #[arg(long, default_value = "")]
   pub prefix: String,
+
+  /// Path to the config file
+  #[arg(short, long, default_value = "config.toml")]
+  pub config: std::path::PathBuf,
 }

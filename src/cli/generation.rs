@@ -43,6 +43,10 @@ pub struct Args {
   /// This value will be injected into the `{{INPUT}}` placeholder within
   /// the system prompt.
   pub prompt: MaybeStdin<String>,
+
+  /// Path to the config file
+  #[arg(short, long, default_value = "config.toml")]
+  pub config: std::path::PathBuf,
 }
 
 /// Full configuration for a single generation.
