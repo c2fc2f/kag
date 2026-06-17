@@ -158,7 +158,7 @@ async fn execute_benchmark(
   let mut base_p = output.join(dname.deref());
   base_p.push(qname.deref());
 
-  create_dir_all(&base_p).await?;
+  let mut dir_created = false;
 
   for (sname, setup) in benchmark.as_ref() {
     if let Some(dataset) = &setup.datasets
@@ -181,6 +181,11 @@ async fn execute_benchmark(
       && metadata(&path).await?.len() > 0
     {
       continue;
+    }
+
+    if !dir_created {
+      create_dir_all(&base_p).await?;
+      dir_created = true;
     }
 
     let tmp_path = path.with_added_extension("tmp");
