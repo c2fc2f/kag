@@ -54,7 +54,7 @@ A JSON file shaped as a nested `dataset → question → entry` map. Dataset and
 }
 ```
 
-When `output` is omitted the question is treated as free-form. For an `MCQ` entry, the `options` map is flattened into a newline-separated list and injected into the prompt as `{{CHOICE}}`.
+When `output` is omitted the question is treated as free-form. For an `MCQ` entry, the `options` map is flattened into a newline-separated list and injected into the prompt as `{{CHOICE}}`. An optional `answer` field (the identifier of the correct option) may be added; it is ignored at benchmark time but is consumed by the [`stats`](../stats/README.md) subcommand to grade the run.
 
 See [`examples/dataset/dataset.sample.json`](../../../examples/dataset/dataset.sample.json).
 

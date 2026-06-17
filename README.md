@@ -1,6 +1,6 @@
 # kag
 
-A command-line toolkit written in Rust for **Knowledge-Augmented Generation (KAG)**: it runs text generation against multiple LLM providers, optionally enriching each prompt with context retrieved from a [Neo4j](https://neo4j.com/) knowledge graph, and ships an evaluation benchmark runner to compare techniques and models across datasets.
+A command-line toolkit written in Rust for **Knowledge-Augmented Generation (KAG)**: it runs text generation against multiple LLM providers, optionally enriching each prompt with context retrieved from a [Neo4j](https://neo4j.com/) knowledge graph, and ships an evaluation benchmark runner — together with a scoring command — to compare techniques and models across datasets.
 
 ## Overview
 
@@ -70,6 +70,7 @@ Run `kag --help` for the full list of subcommands, or `kag <COMMAND> --help` for
 |---|---|---|
 | `generation` | Run a single text generation, with optional Knowledge-Augmented Generation (KAG/RAG) when a retriever is supplied | [README](src/subcommand/generation/README.md) |
 | `benchmark` | Evaluate datasets across multiple configured techniques and models, with parallel execution and resumable runs | [README](src/subcommand/benchmark/README.md) |
+| `stats` | Score a benchmark result tree against the ground truth, reporting per-setup accuracy, precision, and coverage as a table or JSON | [README](src/subcommand/stats/README.md) |
 
 A hidden `completion <SHELL>` subcommand prints a shell completion script to standard output.
 
