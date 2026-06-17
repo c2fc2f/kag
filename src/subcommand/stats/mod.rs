@@ -48,6 +48,27 @@ fn setup_name(file_name: &str, prefix: &str) -> Option<ComponentName> {
     .and_then(|s| ComponentName::from_str(s).ok())
 }
 
+/// Recovers the setup name from a directory entry, but only when the entry is
+/// a regular file whose name matches the `<prefix>…json` result scheme.
+///
+/// Returns `Ok(None)` for anything that should be ignored (directories,
+/// symlinks, files that do not match the naming scheme). This is the single
+/// definition of "a gradeable result file", shared by both the grading path
+/// and the skipped-file counter so the two never disagree.
+///
+/// # Errors
+///
+/// Returns an [`std::io::Error`] if the entry's file type cannot be read.
+fn result_file_setup(
+  entry: &fs::DirEntry,
+  prefix: &str,
+) -> std::io::Result<Option<ComponentName>> {
+  if !entry.file_type()?.is_file() {
+    return Ok(None);
+  }
+  Ok(setup_name(&entry.file_name().to_string_lossy(), prefix))
+}
+
 /// Walks the result tree and accumulates per-setup metrics.
 ///
 /// The expected layout is
@@ -81,20 +102,36 @@ fn collect_metrics(
     if !dataset_entry.file_type()?.is_dir() {
       continue;
     }
-    let dataset = ComponentName::from_str(
+    let dataset = match ComponentName::from_str(
       dataset_entry.file_name().to_string_lossy().as_ref(),
-    )
-    .map_err(|_| std::io::Error::other("Invalid dataset name"))?;
+    ) {
+      Ok(name) => name,
+      Err(_) => {
+        warn!(
+          "Ignoring directory with invalid dataset name: {:?}",
+          dataset_entry.file_name()
+        );
+        continue;
+      }
+    };
 
     for question_entry in fs::read_dir(dataset_entry.path())? {
       let question_entry = question_entry?;
       if !question_entry.file_type()?.is_dir() {
         continue;
       }
-      let question = ComponentName::from_str(
+      let question = match ComponentName::from_str(
         question_entry.file_name().to_string_lossy().as_ref(),
-      )
-      .map_err(|_| std::io::Error::other("Invalid question name"))?;
+      ) {
+        Ok(name) => name,
+        Err(_) => {
+          warn!(
+            "Ignoring directory with invalid question name: {:?}",
+            question_entry.file_name()
+          );
+          continue;
+        }
+      };
 
       let answer = match datasets
         .0
@@ -107,7 +144,12 @@ fn collect_metrics(
           answer: Some(answer),
         }) => answer,
         Some(_) => {
-          skipped += fs::read_dir(question_entry.path())?.count();
+          for file_entry in fs::read_dir(question_entry.path())? {
+            let file_entry = file_entry?;
+            if result_file_setup(&file_entry, prefix)?.is_some() {
+              skipped += 1;
+            }
+          }
           continue;
         }
         None => {
@@ -121,9 +163,8 @@ fn collect_metrics(
           continue;
         }
         let file_name = file_entry.file_name();
-        let Some(setup) = setup_name(&file_name.to_string_lossy(), prefix)
-        else {
-          trace!("Ignoring non-matching file: {file_name:?}");
+        let Some(setup) = result_file_setup(&file_entry, prefix)? else {
+          trace!("Ignoring non-result entry: {:?}", file_entry.file_name());
           continue;
         };
 
@@ -138,7 +179,7 @@ fn collect_metrics(
 
         let outcome = match &parsed {
           benchmark::result::Result::Ok(r) => {
-            if r.result.eq(answer) {
+            if r.result.trim().eq_ignore_ascii_case(answer) {
               Outcome::Correct
             } else {
               Outcome::Incorrect
@@ -222,16 +263,19 @@ fn build_report(
 }
 
 /// Formats an optional ratio as a percentage, or a dash when absent.
+///
+/// The returned string is not padded; callers align it through the table's
+/// own width specifiers.
 fn pct(value: Option<f64>) -> String {
-  value.map_or_else(|| "   -  ".to_string(), |v| format!("{:6.2}", v * 100.0))
+  value.map_or_else(|| "-".to_string(), |v| format!("{:.2}", v * 100.0))
 }
 
 /// Formats an optional duration in seconds, or a dash when absent.
+///
+/// The returned string is not padded; callers align it through the table's
+/// own width specifiers.
 fn secs(value: Option<Duration>) -> String {
-  value.map_or_else(
-    || "    -   ".to_string(),
-    |d| format!("{:8.3}", d.as_secs_f64()),
-  )
+  value.map_or_else(|| "-".to_string(), |d| format!("{:.3}", d.as_secs_f64()))
 }
 
 /// Renders the report as an aligned, human-readable table on standard output.
@@ -254,8 +298,11 @@ fn render_text(report: &Report) {
     .unwrap_or(5)
     .max(5);
 
-  println!(
-    "{:<width$}  {:>7}  {:>7}  {:>8}  {:>5}  {:>5}  {:>4}  {:>3}  {:>8}  {:>8}  {:>7}  {:>8}  {:>8}",
+  let any_retrieval =
+    report.setups.iter().any(|s| s.overall.retrieval.is_some());
+
+  print!(
+    "{:<width$}  {:>7}  {:>7}  {:>8}  {:>5}  {:>5}  {:>4}  {:>3}  {:>8}",
     "SETUP",
     "ACC%",
     "PREC%",
@@ -265,12 +312,15 @@ fn render_text(report: &Report) {
     "ERR",
     "TOT",
     "GEN(s)",
-    "RET(s)",
-    "VERTICE",
-    "RELATION",
-    "PROPERTY",
     width = name_width
   );
+  if any_retrieval {
+    print!(
+      "  {:>8}  {:>7}  {:>8}  {:>8}",
+      "RET(s)", "VERTICE", "RELATION", "PROPERTY"
+    );
+  }
+  println!();
 
   for setup in &report.setups {
     let m = &setup.overall;
@@ -291,10 +341,10 @@ fn render_text(report: &Report) {
     if let Some(r) = &m.retrieval {
       print!(
         "  {:>8}  {:>7.2}  {:>8.2}  {:>8.2}",
-        secs(r.avg_time()),
-        r.avg_vertices().unwrap_or_default(),
-        r.avg_relationships().unwrap_or_default(),
-        r.avg_properties().unwrap_or_default(),
+        secs(Some(r.avg_time())),
+        r.avg_vertices(),
+        r.avg_relationships(),
+        r.avg_properties(),
       );
     }
 
@@ -318,10 +368,10 @@ fn render_text(report: &Report) {
       if let Some(r) = &dm.retrieval {
         print!(
           "  {:>8}  {:>7.2}  {:>8.2}  {:>8.2}",
-          secs(r.avg_time()),
-          r.avg_vertices().unwrap_or_default(),
-          r.avg_relationships().unwrap_or_default(),
-          r.avg_properties().unwrap_or_default(),
+          secs(Some(r.avg_time())),
+          r.avg_vertices(),
+          r.avg_relationships(),
+          r.avg_properties(),
         );
       }
 
@@ -369,7 +419,15 @@ pub fn run(args: Args) -> ExitCode {
     .0
     .values()
     .flat_map(|questions| questions.values())
-    .filter(|entry| matches!(entry.output, Some(dataset::Output::Mcq { .. })))
+    .filter(|entry| {
+      matches!(
+        entry.output,
+        Some(dataset::Output::Mcq {
+          answer: Some(_),
+          ..
+        })
+      )
+    })
     .count();
 
   let report =

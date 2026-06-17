@@ -121,23 +121,45 @@ impl Metrics {
 
 impl RetrievalMetrics {
   /// Mean retrieval duration per sampled file.
-  pub fn avg_time(&self) -> Option<Duration> {
-    (self.samples > 0).then(|| self.time.div_f64(self.samples as f64))
+  ///
+  /// # Panics
+  ///
+  /// Panics if called on a value with no samples. A [`RetrievalMetrics`] only
+  /// ever exists once at least one sample has been recorded, so this holds
+  /// for every instance reachable through [`Metrics::retrieval`].
+  pub fn avg_time(&self) -> Duration {
+    debug_assert!(self.samples > 0, "RetrievalMetrics without samples");
+    self.time.div_f64(self.samples as f64)
   }
 
   /// Mean number of vertices retrieved per sampled file.
-  pub fn avg_vertices(&self) -> Option<f64> {
-    (self.samples > 0).then(|| self.vertices as f64 / self.samples as f64)
+  ///
+  /// # Panics
+  ///
+  /// Panics if called on a value with no samples; see [`Self::avg_time`].
+  pub fn avg_vertices(&self) -> f64 {
+    debug_assert!(self.samples > 0, "RetrievalMetrics without samples");
+    self.vertices as f64 / self.samples as f64
   }
 
   /// Mean number of relationships retrieved per sampled file.
-  pub fn avg_relationships(&self) -> Option<f64> {
-    (self.samples > 0).then(|| self.relationships as f64 / self.samples as f64)
+  ///
+  /// # Panics
+  ///
+  /// Panics if called on a value with no samples; see [`Self::avg_time`].
+  pub fn avg_relationships(&self) -> f64 {
+    debug_assert!(self.samples > 0, "RetrievalMetrics without samples");
+    self.relationships as f64 / self.samples as f64
   }
 
   /// Mean number of properties retrieved per sampled file.
-  pub fn avg_properties(&self) -> Option<f64> {
-    (self.samples > 0).then(|| self.properties as f64 / self.samples as f64)
+  ///
+  /// # Panics
+  ///
+  /// Panics if called on a value with no samples; see [`Self::avg_time`].
+  pub fn avg_properties(&self) -> f64 {
+    debug_assert!(self.samples > 0, "RetrievalMetrics without samples");
+    self.properties as f64 / self.samples as f64
   }
 }
 
@@ -186,10 +208,7 @@ impl Serialize for RetrievalMetrics {
     state.serialize_field("properties", &self.properties)?;
     state.serialize_field("samples", &self.samples)?;
 
-    state.serialize_field(
-      "avg_time_secs",
-      &self.avg_time().map(|d| d.as_secs_f64()),
-    )?;
+    state.serialize_field("avg_time_secs", &self.avg_time().as_secs_f64())?;
     state.serialize_field("avg_vertices", &self.avg_vertices())?;
     state.serialize_field("avg_relationships", &self.avg_relationships())?;
     state.serialize_field("avg_properties", &self.avg_properties())?;

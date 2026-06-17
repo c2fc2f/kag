@@ -64,7 +64,6 @@ pub enum Output {
     /// values are the corresponding human-readable labels.
     options: BTreeMap<String, String>,
     /// The identifier representing the correct option from the `options` map.
-    #[allow(dead_code)]
     answer: Option<String>,
   },
 }
