@@ -60,7 +60,6 @@ Run `kag --help` for the full list of subcommands, or `kag <COMMAND> --help` for
 
 | Flag | Short | Description | Default |
 |---|---|---|---|
-| `--config <FILE>` | `-c` | Path to the configuration file | `config.toml` |
 | `--verbose` | `-v` | Increase output verbosity (repeatable) | *(errors)* |
 | `--quiet` | `-q` | Decrease output verbosity (repeatable) | |
 

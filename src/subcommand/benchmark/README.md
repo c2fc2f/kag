@@ -22,6 +22,7 @@ kag benchmark [OPTIONS] --datasets <DATASETS> --benchmark <BENCHMARK>
 
 | Flag | Short | Description | Default |
 |---|---|---|---|
+| `--config <FILE>` | `-c` | Path to the configuration file | `config.toml` |
 | `--datasets <FILE>` | `-d` | JSON file describing the evaluation datasets | *(required)* |
 | `--benchmark <FILE>` | `-b` | TOML file describing the setups to compare | *(required)* |
 | `--parallel <N>` | `-p` | Number of concurrent tasks | `1` |

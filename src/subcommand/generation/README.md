@@ -19,6 +19,7 @@ kag generation [OPTIONS] --provider <PROVIDER> --model <MODEL> --temperature <TE
 
 | Flag | Short | Description | Default |
 |---|---|---|---|
+| `--config <FILE>` | `-c` | Path to the configuration file | `config.toml` |
 | `--provider <NAME>` | `-p` | Completion provider component to use | *(required)* |
 | `--model <MODEL>` | `-m` | Model identifier passed to the provider | *(required)* |
 | `--temperature <T>` | `-t` | Sampling temperature; higher is more creative, lower more deterministic | *(required)* |
