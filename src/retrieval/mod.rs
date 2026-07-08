@@ -46,7 +46,7 @@ pub enum Stats {
   },
 }
 
-impl Retriever {
+impl<'a> Retriever<'a> {
   /// Executes the full data retrieval pipeline for a given user query prompt.
   ///
   /// # Parameters

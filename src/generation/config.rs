@@ -74,7 +74,7 @@ impl Generation {
   /// ```
   pub async fn generate(
     &self,
-    config: &Config,
+    config: &Config<'_>,
     system_prompt: Option<impl AsRef<str>>,
     prompt: impl AsRef<str> + Debug,
     mut environment: Environment<'_>,

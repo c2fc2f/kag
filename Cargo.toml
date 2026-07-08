@@ -42,19 +42,19 @@ clap_complete = "4"
 serde = { version = "1", features = [ "derive" ] }
 serde_json = "1"
 toml = "1"
-minijinja = "2"
+minijinja = { version = "2", features = [ "custom_syntax" ] }
 env_logger = "0.11"
 log = "0.4"
 anyhow = "1"
-rig-core = "0.38"
-tokio = { version = "1.0", features = ["full"] }
-tokio-util = { version = "0.7", features = ["io-util"] }
+rig-core = "0.39"
+tokio = { version = "1.0", features = [ "full" ] }
+tokio-util = { version = "0.7", features = [ "io-util" ] }
 neo4rs = "0.8"
 futures = "0.3"
 async-stream = "0.3"
-hashbrown = { version = "0.17", features = ["serde"] }
-itertools = "0.14"
-rustls = { version = "0.23", features = ["ring"] }
+hashbrown = { version = "0.17", features = [ "serde" ] }
+itertools = "0.15"
+rustls = { version = "0.23", features = [ "ring" ] }
 
 [build-dependencies]
 clap = { version = "4", features = [ "derive", "string" ] }

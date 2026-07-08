@@ -25,26 +25,33 @@ extra.neo4j = {
 type = "Embedder"
 provider = "ollama"
 model = "embeddinggemma:latest"
-top_k = 7
+top_k = 3
 
-[retrievers.neo4j-embedding-triplet-text.extra.neo4j]
+[retrievers.embeddingemma-triplet-text.extra.neo4j]
 type = "Neo4j"
-index = "NODE_INDEX"
+neighborhood = 3
+index = "MOVIE_INDEX"
 translation = {
   type = "TextualTriplet",
   node_formats = {
-    Person = "the person {name}",
-    Actor = "the actor {name}",
-    Movie = "the movie {title}"
+    "Movie" = "the movie {title}",
+    "Person" = "the person {name}"
   },
   property_formats = {
-    Person = [
-      "{FROM} is {age} years old.",
-      "{FROM} was born in {birthplace}."
+    "Movie" = [
+      "{FROM} was released in the year {released}.",
+      "The tagline for {FROM} is '{tagline}'."
+    ],
+    "Person" = [
+      "{FROM} was born in the year {born}."
     ]
   },
   relation_formats = {
-    ACTED_IN = "{FROM} acted in {role} during {year} in {TO}",
-    DIRECTED = "{FROM} directed {TO} in {year}"
+    "ACTED_IN" = "{FROM} acted in {TO} playing the role(s) of {roles}.",
+    "DIRECTED" = "{FROM} directed {TO}.",
+    "FOLLOWS" = "{FROM} follows {TO}.",
+    "PRODUCED" = "{FROM} produced {TO}.",
+    "REVIEWED" = "{FROM} reviewed {TO} with a rating of {rating} and summarized it as '{summary}'.",
+    "WROTE" = "{FROM} wrote {TO}."
   }
 }

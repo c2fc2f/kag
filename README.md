@@ -125,7 +125,7 @@ For a Neo4j backend, the `extra.<database>` block accepts:
 Two strategies turn the retrieved subgraph into prompt-ready text:
 
 - **`FormalTriplet`** *(default)* — emits a Cypher-like representation, e.g. `(Albert_Einstein)-[:educatedAt]->(University_of_Zurich)` and `(Albert_Einstein)-[age]->(76)`. Optional `property_filters` (per node-label set) and `relationship_property_filters` (per relationship type) restrict which properties are emitted; when a label set or type is absent from the filter, all of its properties are included.
-- **`TextualTriplet`** — emits natural-language statements from templates. `node_formats` maps a node-label set to a phrase (e.g. `the actor {name}`), `property_formats` turns intrinsic node properties into standalone sentences (the `{FROM}` placeholder injects the node phrase), and `relation_formats` renders each relationship type (the `{FROM}` and `{TO}` placeholders inject the source and target node phrases). Curly braces interpolate node/relationship properties.
+- **`TextualTriplet`** — emits natural-language statements from templates. `node_formats` maps a node-label set to a phrase (e.g. `the actor {name}`), `property_formats` turns intrinsic node properties into standalone sentences (the `{FROM}` placeholder injects the node phrase), and `relation_formats` renders each relationship type (the `{FROM}` and `{TO}` placeholders inject the source and target node phrases). Templating is powered by **MiniJinja**, which is custom-configured to use single curly braces (`{` and `}`) instead of the default double braces to interpolate node and relationship properties, while code blocks are enclosed in `{:` and `:}`.
 
 ### Sample configuration
 

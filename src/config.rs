@@ -12,8 +12,14 @@ use std::{
 
 use anyhow::Context;
 use hashbrown::HashMap;
-use minijinja::Environment;
-use serde::{Deserialize, Deserializer, de::DeserializeOwned};
+use log::warn;
+use minijinja::{
+  Environment, Template, escape_formatter, syntax::SyntaxConfig,
+};
+use serde::{
+  Deserialize, Deserializer,
+  de::{DeserializeOwned, Error},
+};
 
 use crate::cli::component::ComponentName;
 
@@ -22,7 +28,7 @@ use crate::cli::component::ComponentName;
 /// This serves as the root deserialization target for the configuration file.
 /// Missing sections will default to empty maps automatically
 #[derive(Debug, Deserialize)]
-pub struct Config {
+pub struct Config<'a> {
   /// A map of configured AI providers used by the application
   #[serde(default)]
   pub providers: HashMap<ComponentName, Provider>,
@@ -33,7 +39,7 @@ pub struct Config {
 
   /// A map of data retrievers used for RAG operations
   #[serde(default)]
-  pub retrievers: HashMap<ComponentName, Retriever>,
+  pub retrievers: HashMap<ComponentName, Retriever<'a>>,
 }
 
 /// Represents a supported AI service provider.
@@ -113,7 +119,7 @@ fn neo4j_default_database() -> String {
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type")]
 #[non_exhaustive]
-pub enum Retriever {
+pub enum Retriever<'a> {
   /// Configuration for an embedding model used to vectorize data for
   /// retrieval
   Embedder {
@@ -130,7 +136,7 @@ pub enum Retriever {
     /// Database-specific configuration extensions for the retriever, by keyed
     /// by the targeted database name
     #[serde(default)]
-    extra: HashMap<ComponentName, RetrieverExtra>,
+    extra: HashMap<ComponentName, RetrieverExtra<'a>>,
   },
 }
 
@@ -139,7 +145,7 @@ pub enum Retriever {
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type")]
 #[non_exhaustive]
-pub enum RetrieverExtra {
+pub enum RetrieverExtra<'a> {
   /// Configuration specific to a Neo4j graph database retrieval backend
   Neo4j {
     /// The specific vector index in Neo4j to query against
@@ -159,7 +165,7 @@ pub enum RetrieverExtra {
     /// being passed to the next stage of the RAG pipeline.
     /// By default, it uses the `FormalTriplet` format
     #[serde(default)]
-    translation: Neo4jTranslationStrategy,
+    translation: Neo4jTranslationStrategy<'a>,
   },
 }
 
@@ -167,7 +173,7 @@ pub enum RetrieverExtra {
 /// into a text representation.
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type")]
-pub enum Neo4jTranslationStrategy {
+pub enum Neo4jTranslationStrategy<'a> {
   /// Formats the graph data as strict Subject-Predicate-Object triplets.
   /// Example:
   ///   `(Albert_Einstein)-[:educatedAt]->(University_of_Zurich)`
@@ -206,7 +212,7 @@ pub enum Neo4jTranslationStrategy {
     /// Maps a combination of node labels to a validated format template.
     /// The format uses curly braces to inject node properties.
     /// Example: {"Person", "Actor"} -> "the actor {name}"
-    node_formats: HashMap<LabelSet, FormatTemplate>,
+    node_formats: HashMap<LabelSet, FormatTemplate<'a>>,
 
     /// Maps a combination of node labels to a list of validated format
     /// templates. This is used to extract intrinsic node properties as
@@ -217,7 +223,7 @@ pub enum Neo4jTranslationStrategy {
     ///     "{FROM} is {age} years old.",
     ///     "{FROM} was born in {birthplace}."
     /// ]
-    property_formats: HashMap<LabelSet, Vec<FormatTemplate>>,
+    property_formats: HashMap<LabelSet, Vec<FormatTemplate<'a>>>,
 
     /// Maps a relationship type to its validated format template.
     /// The format uses curly braces to inject relationship properties.
@@ -225,11 +231,11 @@ pub enum Neo4jTranslationStrategy {
     /// inject the formatted text of the origin and destination nodes
     /// respectively.
     /// Example: "ACTED_IN" -> "{FROM} acted in {role} during {year} in {TO}"
-    relation_formats: HashMap<String, FormatTemplate>,
+    relation_formats: HashMap<String, FormatTemplate<'a>>,
   },
 }
 
-impl Default for Neo4jTranslationStrategy {
+impl<'a> Default for Neo4jTranslationStrategy<'a> {
   fn default() -> Self {
     Self::FormalTriplet {
       property_filters: Default::default(),
@@ -282,77 +288,75 @@ impl<'de> Deserialize<'de> for LabelSet {
 
 /// A wrapper around parsed tokens to allow custom Serde deserialization
 /// for both nodes and relationships.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct FormatTemplate(pub Vec<FormatToken>);
+#[derive(Debug)]
+pub struct FormatTemplate<'a>(pub Environment<'a>);
 
-impl<'de> Deserialize<'de> for FormatTemplate {
+/// A trait defining the standard mechanism for retrieving a pre-compiled
+/// MiniJinja template from a containing structure.
+pub trait TemplateRetriever {
+  /// The internal identifier used to register and retrieve the single parsed
+  /// template within the MiniJinja environment.
+  const TEMPLATE_NAME: &str = "default";
+
+  /// Retrieves the compiled MiniJinja template from the underlying
+  /// environment
+  ///
+  /// # Errors
+  ///
+  /// Returns a `minijinja::Error` if the template cannot be found in the
+  /// environment (e.g., if the environment was not initialized correctly).
+  fn get_template(&self) -> Result<Template<'_, '_>, minijinja::Error>;
+}
+
+impl<'a> TemplateRetriever for FormatTemplate<'a> {
+  fn get_template(&self) -> Result<Template<'_, '_>, minijinja::Error> {
+    self.0.get_template(Self::TEMPLATE_NAME)
+  }
+}
+
+impl<'a, 'de> Deserialize<'de> for FormatTemplate<'a> {
   fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
   where
     D: Deserializer<'de>,
   {
-    let raw_format = String::deserialize(deserializer)?;
-    parse_template(&raw_format).map_err(serde::de::Error::custom)
-  }
-}
+    let raw_template = String::deserialize(deserializer)?;
+    let mut env = Environment::new();
 
-/// Parses a template string into a vector of format tokens.
-/// Validates that `{` and `}` are properly matched.
-fn parse_template(input: &str) -> Result<FormatTemplate, String> {
-  let mut tokens = Vec::new();
-  let mut current_buffer = String::new();
-  let mut in_property = false;
+    let syntax = SyntaxConfig::builder()
+      .variable_delimiters("{", "}")
+      .block_delimiters("{:", ":}")
+      .build()
+      .map_err(|e| {
+        D::Error::custom(format!("Failed to build custom syntax config: {e}"))
+      })?;
 
-  for c in input.chars() {
-    match c {
-      '{' => {
-        if in_property {
-          return Err(
-            "Invalid format: nested '{' are not allowed.".to_string(),
-          );
-        }
-        if !current_buffer.is_empty() {
-          tokens.push(FormatToken::Literal(current_buffer.clone()));
-          current_buffer.clear();
-        }
-        in_property = true;
+    env.set_syntax(syntax);
+    env.set_formatter(|out, state, value| {
+      if value.is_undefined() {
+        warn!(
+          "FormatTemplate: missing property in template'{}'",
+          state.name()
+        );
+        out.write_str("null")?;
+        Ok(())
+      } else {
+        escape_formatter(out, state, value)
       }
-      '}' => {
-        if !in_property {
-          return Err(
-            "Invalid format: found '}' without a matching '{'.".to_string(),
-          );
-        }
-        if current_buffer.is_empty() {
-          return Err("Invalid format: empty property name '{}'.".to_string());
-        }
-        tokens.push(FormatToken::Property(current_buffer.clone()));
-        current_buffer.clear();
-        in_property = false;
-      }
-      _ => {
-        current_buffer.push(c);
-      }
-    }
+    });
+
+    env
+      .add_template_owned(Self::TEMPLATE_NAME, raw_template)
+      .map_err(|e| {
+        D::Error::custom(format!(
+          "\
+            Failed to parse the format string as a valid MiniJinja template: \
+            {e}\
+          "
+        ))
+      })?;
+
+    Ok(Self(env))
   }
-
-  if in_property {
-    return Err("Invalid format: missing closing '}'.".to_string());
-  }
-
-  if !current_buffer.is_empty() {
-    tokens.push(FormatToken::Literal(current_buffer));
-  }
-
-  Ok(FormatTemplate(tokens))
-}
-
-/// Represents a single piece of a parsed template string.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum FormatToken {
-  /// A literal string of text to be inserted as-is.
-  Literal(String),
-  /// The name of a property to be dynamically extracted.
-  Property(String),
 }
 
 /// Returns the default number of elements to retrieve (Top-K).
@@ -418,101 +422,6 @@ mod tests {
   use std::{collections::BTreeSet, str::FromStr};
 
   use super::*;
-
-  // ---- parse_template ----
-
-  #[test]
-  fn parse_template_empty_input_yields_no_tokens() {
-    assert_eq!(parse_template("").unwrap(), FormatTemplate(vec![]));
-  }
-
-  #[test]
-  fn parse_template_plain_literal() {
-    assert_eq!(
-      parse_template("hello world").unwrap(),
-      FormatTemplate(vec![FormatToken::Literal("hello world".into())])
-    );
-  }
-
-  #[test]
-  fn parse_template_single_property() {
-    assert_eq!(
-      parse_template("{name}").unwrap(),
-      FormatTemplate(vec![FormatToken::Property("name".into())])
-    );
-  }
-
-  #[test]
-  fn parse_template_literal_then_property() {
-    assert_eq!(
-      parse_template("the actor {name}").unwrap(),
-      FormatTemplate(vec![
-        FormatToken::Literal("the actor ".into()),
-        FormatToken::Property("name".into()),
-      ])
-    );
-  }
-
-  #[test]
-  fn parse_template_adjacent_properties_have_no_literal_between() {
-    assert_eq!(
-      parse_template("{a}{b}").unwrap(),
-      FormatTemplate(vec![
-        FormatToken::Property("a".into()),
-        FormatToken::Property("b".into()),
-      ])
-    );
-  }
-
-  #[test]
-  fn parse_template_interleaved_relation_format() {
-    assert_eq!(
-      parse_template("{FROM} acted in {role} during {year} in {TO}").unwrap(),
-      FormatTemplate(vec![
-        FormatToken::Property("FROM".into()),
-        FormatToken::Literal(" acted in ".into()),
-        FormatToken::Property("role".into()),
-        FormatToken::Literal(" during ".into()),
-        FormatToken::Property("year".into()),
-        FormatToken::Literal(" in ".into()),
-        FormatToken::Property("TO".into()),
-      ])
-    );
-  }
-
-  #[test]
-  fn parse_template_rejects_nested_open_brace() {
-    let err = parse_template("{a{b}").unwrap_err();
-    assert!(err.contains("nested"), "unexpected error: {err}");
-  }
-
-  #[test]
-  fn parse_template_rejects_unmatched_close_brace() {
-    let err = parse_template("a}b").unwrap_err();
-    assert!(
-      err.contains("without a matching"),
-      "unexpected error: {err}"
-    );
-  }
-
-  #[test]
-  fn parse_template_rejects_empty_property() {
-    let err = parse_template("{}").unwrap_err();
-    assert!(err.contains("empty property"), "unexpected error: {err}");
-  }
-
-  #[test]
-  fn parse_template_rejects_missing_close_brace() {
-    let err = parse_template("{name").unwrap_err();
-    assert!(err.contains("missing closing"), "unexpected error: {err}");
-  }
-
-  #[test]
-  fn parse_template_has_no_brace_escaping() {
-    // Documents current behaviour: there is no escape, so a literal '{'
-    // cannot be emitted and "{{" is a (nested) error.
-    assert!(parse_template("{{").is_err());
-  }
 
   // ---- LabelSet ----
 

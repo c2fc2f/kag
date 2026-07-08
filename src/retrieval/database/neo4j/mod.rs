@@ -56,7 +56,7 @@ pub async fn retrieve_with_embedding(
   index: &str,
   top_k: u32,
   neighborhood: u32,
-  translation: &Neo4jTranslationStrategy,
+  translation: &Neo4jTranslationStrategy<'_>,
   embedding: &Embedding,
 ) -> anyhow::Result<Output> {
   info!("Connecting to Neo4j database '{}' at {}", database, uri);

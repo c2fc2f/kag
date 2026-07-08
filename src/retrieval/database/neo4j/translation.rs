@@ -15,7 +15,16 @@
 //! 2. **TextualTriplet**: Generates natural language or template-bound
 //!    textual statements using pre-configured tokens and string templates.
 
-use std::{collections::BTreeSet, fmt::Write, hash::Hasher, time::Instant};
+use std::{
+  collections::BTreeSet,
+  fmt::Write,
+  hash::Hasher,
+  sync::{
+    Arc,
+    atomic::{AtomicUsize, Ordering},
+  },
+  time::Instant,
+};
 
 use anyhow::Context;
 use futures::{Stream, StreamExt};
@@ -24,7 +33,9 @@ use log::{debug, info, trace, warn};
 use neo4rs::{Node, Relation, Row};
 
 use crate::{
-  config::{FormatTemplate, FormatToken, LabelSet, Neo4jTranslationStrategy},
+  config::{
+    FormatTemplate, LabelSet, Neo4jTranslationStrategy, TemplateRetriever,
+  },
   retrieval::database::{Output, Stats},
 };
 
@@ -97,7 +108,7 @@ impl<'a> std::hash::Hash for QuerySet<'a> {
 /// therefore still have written `{key}` placeholders for properties that were
 /// requested by a template but absent on the node or relationship.
 pub async fn process_translation(
-  translation: &Neo4jTranslationStrategy,
+  translation: &Neo4jTranslationStrategy<'_>,
   mut stream: impl Stream<Item = Result<Row, neo4rs::Error>> + Unpin,
 ) -> anyhow::Result<Output> {
   let start = Instant::now();
@@ -283,7 +294,7 @@ pub async fn process_translation(
         let mut source_text = String::new();
         let mut source_props = 0;
         if let Some(template) = node_formats.get(&QuerySet(&source_labels)) {
-          source_props = template.render_node(&source, &mut source_text);
+          source_props = template.render_node(&source, &mut source_text)?;
         } else {
           trace!(
             "\
@@ -298,7 +309,7 @@ pub async fn process_translation(
         let mut target_text = String::new();
         let mut target_props = 0;
         if let Some(template) = node_formats.get(&QuerySet(&target_labels)) {
-          target_props = template.render_node(&target, &mut target_text);
+          target_props = template.render_node(&target, &mut target_text)?;
         } else {
           trace!(
             "\
@@ -316,7 +327,7 @@ pub async fn process_translation(
             &source_text,
             &target_text,
             &mut buf,
-          );
+          )?;
           buf.push('\n');
 
           relationships += 1;
@@ -347,7 +358,8 @@ pub async fn process_translation(
           if let Some(prop_templates) = property_formats.get(&QuerySet(labels))
           {
             for template in prop_templates {
-              properties += template.render_property(node, base_text, &mut buf);
+              properties +=
+                template.render_property(node, base_text, &mut buf)?;
               buf.push('\n');
             }
             if !prop_templates.is_empty() && displayed_nodes.insert(node.id()) {
@@ -374,31 +386,63 @@ pub async fn process_translation(
   })
 }
 
-impl FormatTemplate {
+impl<'a> FormatTemplate<'a> {
   /// Renders a node directly into the provided buffer
-  pub fn render_node(&self, node: &Node, buf: &mut String) -> usize {
-    let mut properties = 0;
+  pub fn render_node(
+    &self,
+    node: &Node,
+    buf: &mut String,
+  ) -> anyhow::Result<usize> {
+    #[derive(Debug)]
+    struct Context {
+      node: *const Node,
+      count: *const AtomicUsize,
+    }
 
-    for token in &self.0 {
-      match token {
-        FormatToken::Literal(text) => buf.push_str(text),
-        FormatToken::Property(key) => {
-          if let Ok(val) = node.get::<serde_json::Value>(key) {
-            let _ = write!(buf, "{}", val);
-            properties += 1;
+    unsafe impl Send for Context {}
+    unsafe impl Sync for Context {}
+
+    use minijinja::value::{Object, Value};
+
+    impl Object for Context {
+      fn get_value(self: &Arc<Self>, field: &Value) -> Option<Value> {
+        field.as_str().and_then(|s| {
+          if let Ok(val) = unsafe { &*self.node }.get(s) {
+            unsafe {
+              (*self.count).fetch_add(1, Ordering::Relaxed);
+            }
+            Some(val)
           } else {
-            warn!(
-              "FormatToken missing property '{}' on Node {}",
-              key,
-              node.id()
-            );
-            let _ = write!(buf, "{{{}}}", key);
+            None
           }
-        }
+        })
       }
     }
 
-    properties
+    let count = AtomicUsize::new(0);
+    let template = self
+      .get_template()
+      .context("Failed to retrieve the MiniJinja template")?;
+
+    let mut vec_buf = std::mem::take(buf).into_bytes();
+    template
+      .render_captured_to(
+        Value::from_object(Context {
+          node: node as *const Node,
+          count: &count as *const AtomicUsize,
+        }),
+        &mut vec_buf,
+      )
+      .context("Failed to render the template into the byte buffer")?;
+
+    *buf = String::from_utf8(vec_buf).context(
+      "\
+        Failed to convert the rendered byte buffer back to a valid UTF-8 \
+        String\
+      ",
+    )?;
+
+    Ok(count.load(Ordering::Relaxed))
   }
 
   /// Renders a relationship directly into the provided buffer
@@ -408,33 +452,66 @@ impl FormatTemplate {
     from: &str,
     to: &str,
     buf: &mut String,
-  ) -> usize {
-    let mut properties = 0;
+  ) -> anyhow::Result<usize> {
+    #[derive(Debug)]
+    struct Context {
+      relation: *const Relation,
+      from: *const str,
+      to: *const str,
+      count: *const AtomicUsize,
+    }
 
-    for token in &self.0 {
-      match token {
-        FormatToken::Literal(text) => buf.push_str(text),
-        FormatToken::Property(key) => match key.as_str() {
-          "FROM" => buf.push_str(from),
-          "TO" => buf.push_str(to),
-          _ => {
-            if let Ok(val) = rel.get::<serde_json::Value>(key) {
-              let _ = write!(buf, "{}", val);
-              properties += 1;
+    unsafe impl Send for Context {}
+    unsafe impl Sync for Context {}
+
+    use minijinja::value::{Object, Value};
+
+    impl Object for Context {
+      fn get_value(self: &Arc<Self>, field: &Value) -> Option<Value> {
+        match field.as_str() {
+          Some("FROM") => Some(unsafe { &*self.from }.into()),
+          Some("TO") => Some(unsafe { &*self.to }.into()),
+          Some(s) => {
+            if let Ok(val) = unsafe { &*self.relation }.get(s) {
+              unsafe {
+                (*self.count).fetch_add(1, Ordering::Relaxed);
+              }
+              Some(val)
             } else {
-              warn!(
-                "FormatToken missing property '{}' on Relation {}",
-                key,
-                rel.id()
-              );
-              let _ = write!(buf, "{{{}}}", key);
+              None
             }
           }
-        },
+          None => None,
+        }
       }
     }
 
-    properties
+    let count = AtomicUsize::new(0);
+    let template = self
+      .get_template()
+      .context("Failed to retrieve the MiniJinja template")?;
+
+    let mut vec_buf = std::mem::take(buf).into_bytes();
+    template
+      .render_captured_to(
+        Value::from_object(Context {
+          relation: rel as *const Relation,
+          from: from as *const str,
+          to: to as *const str,
+          count: &count as *const AtomicUsize,
+        }),
+        &mut vec_buf,
+      )
+      .context("Failed to render the template into the byte buffer")?;
+
+    *buf = String::from_utf8(vec_buf).context(
+      "\
+        Failed to convert the rendered byte buffer back to a valid UTF-8 \
+        String\
+      ",
+    )?;
+
+    Ok(count.load(Ordering::Relaxed))
   }
 
   /// Renders a standalone property statement directly into the provided
@@ -444,35 +521,63 @@ impl FormatTemplate {
     node: &Node,
     from: &str,
     buf: &mut String,
-  ) -> usize {
-    let mut properties = 0;
+  ) -> anyhow::Result<usize> {
+    #[derive(Debug)]
+    struct Context {
+      node: *const Node,
+      from: *const str,
+      count: *const AtomicUsize,
+    }
 
-    for token in &self.0 {
-      match token {
-        FormatToken::Literal(text) => buf.push_str(text),
-        FormatToken::Property(key) => match key.as_str() {
-          "FROM" => buf.push_str(from),
-          _ => {
-            if let Ok(val) = node.get::<serde_json::Value>(key) {
-              let _ = write!(buf, "{}", val);
-              properties += 1;
+    unsafe impl Send for Context {}
+    unsafe impl Sync for Context {}
+
+    use minijinja::value::{Object, Value};
+
+    impl Object for Context {
+      fn get_value(self: &Arc<Self>, field: &Value) -> Option<Value> {
+        match field.as_str() {
+          Some("FROM") => Some(unsafe { &*self.from }.into()),
+          Some(s) => {
+            if let Ok(val) = unsafe { &*self.node }.get(s) {
+              unsafe {
+                (*self.count).fetch_add(1, Ordering::Relaxed);
+              }
+              Some(val)
             } else {
-              warn!(
-                "\
-                  FormatToken missing property '{}' for standalone statement \
-                  on Node {}\
-                ",
-                key,
-                node.id()
-              );
-              let _ = write!(buf, "{{{}}}", key);
+              None
             }
           }
-        },
+          None => None,
+        }
       }
     }
 
-    properties
+    let count = AtomicUsize::new(0);
+    let template = self
+      .get_template()
+      .context("Failed to retrieve the MiniJinja template")?;
+
+    let mut vec_buf = std::mem::take(buf).into_bytes();
+    template
+      .render_captured_to(
+        Value::from_object(Context {
+          node: node as *const Node,
+          from: from as *const str,
+          count: &count as *const AtomicUsize,
+        }),
+        &mut vec_buf,
+      )
+      .context("Failed to render the template into the byte buffer")?;
+
+    *buf = String::from_utf8(vec_buf).context(
+      "\
+        Failed to convert the rendered byte buffer back to a valid UTF-8 \
+        String\
+      ",
+    )?;
+
+    Ok(count.load(Ordering::Relaxed))
   }
 }
 

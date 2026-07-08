@@ -81,7 +81,7 @@ impl Database {
   ///   Neo4j, but `config` is `None` or mismatching).
   pub async fn retrieve_with_embedding(
     &self,
-    config: Option<&RetrieverExtra>,
+    config: Option<&RetrieverExtra<'_>>,
     top_k: u32,
     embedding: &Embedding,
   ) -> anyhow::Result<Output> {

@@ -141,7 +141,7 @@ pub fn run(args: Args) -> ExitCode {
 /// writing fails
 #[allow(clippy::too_many_arguments)]
 async fn execute_benchmark(
-  config: &Config,
+  config: &Config<'_>,
   dname: &ComponentName,
   qname: &ComponentName,
   question: &DatasetEntry,
