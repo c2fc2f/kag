@@ -334,7 +334,7 @@ impl<'a, 'de> Deserialize<'de> for FormatTemplate<'a> {
     env.set_formatter(|out, state, value| {
       if value.is_undefined() {
         warn!(
-          "FormatTemplate: missing property in template'{}'",
+          "FormatTemplate: missing property in template '{}'",
           state.name()
         );
         out.write_str("null")?;
