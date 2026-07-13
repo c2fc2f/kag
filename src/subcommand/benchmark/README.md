@@ -1,6 +1,6 @@
 # Benchmark Subcommand
 
-Evaluates a collection of questions against several generation setups and writes one structured JSON result file per (dataset, question, setup). It reuses the exact same generation pipeline as the [`generation`](../generation/README.md) subcommand, so any setup can itself be Knowledge-Augmented. Runs are concurrent and resumable.
+Evaluates a collection of questions against several generation setups and writes one structured JSON result file per (dataset, question, setup). It reuses the exact same generation pipeline as the [`generation`](../generation/README.md) subcommand, so any setup can itself be Knowledge-Augmented. Runs are parallel and resumable.
 
 ## How it works
 
@@ -25,7 +25,7 @@ kag benchmark [OPTIONS] --datasets <DATASETS> --benchmark <BENCHMARK>
 | `--config <FILE>` | `-c` | Path to the configuration file | `config.toml` |
 | `--datasets <FILE>` | `-d` | JSON file describing the evaluation datasets | *(required)* |
 | `--benchmark <FILE>` | `-b` | TOML file describing the setups to compare | *(required)* |
-| `--parallel <N>` | `-p` | Number of concurrent tasks | `1` |
+| `--parallel <N>` | `-p` | Number of parallel tasks | `1` |
 | `--continue` | | Resume an interrupted run, preserving existing non-empty result files instead of overwriting them | *(disabled)* |
 | `--output <DIR>` | `-o` | Root directory for result files | `.` (current directory) |
 | `--prefix <STRING>` | | Prefix prepended to each result filename | *(empty)* |

@@ -2,7 +2,7 @@
 //!
 //! This module coordinates the execution of benchmark setups against loaded
 //! evaluation datasets. It manages command-line arguments parsing, runtime
-//! orchestration via Tokio, concurrent task scheduling, and outputs the
+//! orchestration via Tokio, parallel task scheduling, and outputs the
 //! final evaluated metrics into structured JSON result files
 
 pub mod config;
@@ -80,20 +80,17 @@ pub fn run(args: Args) -> ExitCode {
   rt.block_on(async {
     for (dname, dataset) in datasets.0 {
       info!("Starting dataset: {dname}");
-
       let dname = Arc::new(dname);
-
       stream::iter(dataset)
-        .for_each_concurrent(args.parallel.get(), |(qname, question)| {
+        .map(|(qname, question)| {
           let config = Arc::clone(&config);
           let dname = Arc::clone(&dname);
           let benchmark = Arc::clone(&benchmark);
           let output = Arc::clone(&output);
           let prefix = Arc::clone(&prefix);
-
-          async move {
+          // one task per query -> schedulable on any worker thread
+          tokio::spawn(async move {
             debug!("Starting query '{qname}' in dataset '{dname}'");
-
             match execute_benchmark(
               config.as_ref(),
               dname.as_ref(),
@@ -109,10 +106,15 @@ pub fn run(args: Args) -> ExitCode {
               Ok(_) => debug!("Task finished successfully"),
               Err(e) => error!("Task ({dname}/{qname}) failed: {e:#}"),
             }
+          })
+        })
+        .buffer_unordered(args.parallel.get())
+        .for_each(|joined| async {
+          if let Err(e) = joined {
+            error!("Task panicked or was cancelled: {e}");
           }
         })
         .await;
-
       info!("Finished dataset: {dname}");
     }
   });
