@@ -88,7 +88,6 @@ pub fn run(args: Args) -> ExitCode {
           let benchmark = Arc::clone(&benchmark);
           let output = Arc::clone(&output);
           let prefix = Arc::clone(&prefix);
-          // one task per query -> schedulable on any worker thread
           tokio::spawn(async move {
             debug!("Starting query '{qname}' in dataset '{dname}'");
             match execute_benchmark(

@@ -322,7 +322,7 @@ pub async fn process_translation(
         }
 
         if let Some(rel_template) = relation_formats.get(predicate.typ()) {
-          let rel_props = rel_template.render_relation(
+          properties += rel_template.render_relation(
             &predicate,
             &source_text,
             &target_text,
@@ -332,13 +332,13 @@ pub async fn process_translation(
 
           relationships += 1;
 
-          properties += rel_props + source_props + target_props;
-
           if displayed_nodes.insert(source.id()) {
             vertices += 1;
+            properties += source_props;
           }
           if displayed_nodes.insert(target.id()) {
             vertices += 1;
+            properties += target_props;
           }
         } else {
           warn!(
