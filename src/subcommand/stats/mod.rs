@@ -12,7 +12,7 @@ mod metric;
 
 use std::{
   collections::{BTreeMap, BTreeSet},
-  fs::{self, File},
+  fs,
   path::Path,
   process::ExitCode,
   str::FromStr,
@@ -168,8 +168,9 @@ fn collect_metrics(
           continue;
         };
 
+        let bytes = fs::read(file_entry.path())?;
         let parsed: benchmark::result::Result<generation::config::Output> =
-          match serde_json::from_reader(File::open(file_entry.path())?) {
+          match serde_json::from_slice(&bytes) {
             Ok(parsed) => parsed,
             Err(e) => {
               warn!("Failed to parse result file {file_name:?}: {e:#}");
