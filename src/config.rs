@@ -12,7 +12,7 @@ use std::{
 
 use anyhow::Context;
 use hashbrown::HashMap;
-use log::warn;
+use log::debug;
 use minijinja::{
   Environment, Template, escape_formatter, syntax::SyntaxConfig,
 };
@@ -333,7 +333,7 @@ impl<'a, 'de> Deserialize<'de> for FormatTemplate<'a> {
     env.set_syntax(syntax);
     env.set_formatter(|out, state, value| {
       if value.is_undefined() {
-        warn!(
+        debug!(
           "FormatTemplate: missing property in template '{}'",
           state.name()
         );
