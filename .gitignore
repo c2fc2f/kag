@@ -7,4 +7,7 @@ config.toml
 mutagen.yml
 mutagen.yml.lock
 
+flamegraph.svg
+perf.data
+
 code.tar.gz
