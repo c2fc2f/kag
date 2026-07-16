@@ -27,6 +27,8 @@ pub struct Metrics {
   pub generation_time: Duration,
   /// Number of files that contributed a generation duration.
   pub generation_samples: usize,
+  /// Cumulative context length processed across the files.
+  pub context_length: usize,
   /// Performance and volume metrics for retrieval operations, present if a
   /// retriever was utilized during the benchmark run.
   pub retrieval: Option<RetrievalMetrics>,
@@ -49,12 +51,12 @@ pub struct RetrievalMetrics {
 }
 
 impl Metrics {
-  /// Records a single grading [`Outcome`] and its associated timing/retrieval
-  /// data.
+  /// Records a single grading [`Outcome`], context length and its associated
+  /// timing/retrieval data.
   pub fn record(
     &mut self,
     outcome: Outcome,
-    timing: Option<&Duration>,
+    timing_and_context: Option<&(Duration, usize)>,
     retrieval: Option<&(Duration, usize, usize, usize)>,
   ) {
     match outcome {
@@ -63,8 +65,9 @@ impl Metrics {
       Outcome::Error => self.errors += 1,
     }
 
-    if let Some(time) = timing {
+    if let Some((time, context_length)) = timing_and_context {
       self.generation_time += *time;
+      self.context_length += context_length;
       self.generation_samples += 1;
     }
 
@@ -92,6 +95,12 @@ impl Metrics {
   pub fn avg_generation(&self) -> Option<Duration> {
     (self.generation_samples > 0)
       .then(|| self.generation_time.div_f64(self.generation_samples as f64))
+  }
+
+  /// Mean context length per timed file, or [`None`] without samples.
+  pub fn avg_context_length(&self) -> Option<f64> {
+    (self.context_length > 0)
+      .then(|| self.context_length as f64 / self.generation_samples as f64)
   }
 
   /// Fraction of all scored files that were answered correctly.
@@ -189,6 +198,7 @@ impl Serialize for Metrics {
       "total_generation_secs",
       &self.generation_time.as_secs_f64(),
     )?;
+    state.serialize_field("avg_context_length", &self.avg_context_length())?;
 
     state.serialize_field("retrieval", &self.retrieval)?;
 

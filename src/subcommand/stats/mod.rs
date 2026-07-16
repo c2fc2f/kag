@@ -178,21 +178,17 @@ fn collect_metrics(
             }
           };
 
-        let outcome = match &parsed {
-          benchmark::result::Result::Ok(r) => {
-            if r.result.trim().eq_ignore_ascii_case(answer) {
-              Outcome::Correct
-            } else {
-              Outcome::Incorrect
-            }
-          }
-          benchmark::result::Result::Error(_) => Outcome::Error,
-        };
-
-        let (timing, retrieval) = match parsed {
-          benchmark::result::Result::Error(_) => (None, None),
+        let (outcome, timing_context, retrieval) = match parsed {
+          benchmark::result::Result::Error(_) => (Outcome::Error, None, None),
           benchmark::result::Result::Ok(p) => (
-            Some(p.stats.time),
+            {
+              if p.result.trim().eq_ignore_ascii_case(answer) {
+                Outcome::Correct
+              } else {
+                Outcome::Incorrect
+              }
+            },
+            Some((p.stats.time, p.stats.prompt.len())),
             p.stats.retrieval.map(|r| match r.stats {
               crate::retrieval::Stats::Embedder {
                 embedding: _,
@@ -215,10 +211,10 @@ fn collect_metrics(
         let (overall, per_dataset): &mut (_, _) =
           setups.entry(setup).or_default();
 
-        overall.record(outcome, timing.as_ref(), retrieval.as_ref());
+        overall.record(outcome, timing_context.as_ref(), retrieval.as_ref());
         per_dataset.entry(dataset.clone()).or_default().record(
           outcome,
-          timing.as_ref(),
+          timing_context.as_ref(),
           retrieval.as_ref(),
         );
       }
@@ -279,6 +275,14 @@ fn secs(value: Option<Duration>) -> String {
   value.map_or_else(|| "-".to_string(), |d| format!("{:.3}", d.as_secs_f64()))
 }
 
+/// Formats an optional float, or a dash when absent.
+///
+/// The returned string is not padded; callers align it through the table's
+/// own width specifiers.
+fn float(value: Option<f64>) -> String {
+  value.map_or_else(|| "-".to_string(), |d| format!("{:.3}", d))
+}
+
 /// Renders the report as an aligned, human-readable table on standard output.
 fn render_text(report: &Report) {
   println!(
@@ -303,7 +307,7 @@ fn render_text(report: &Report) {
     report.setups.iter().any(|s| s.overall.retrieval.is_some());
 
   print!(
-    "{:<width$}  {:>7}  {:>7}  {:>8}  {:>5}  {:>5}  {:>4}  {:>3}  {:>8}",
+    "{:<width$}  {:>7}  {:>7}  {:>8}  {:>5}  {:>5}  {:>4}  {:>3}  {:>8}  {:>10}",
     "SETUP",
     "ACC%",
     "PREC%",
@@ -313,6 +317,7 @@ fn render_text(report: &Report) {
     "ERR",
     "TOT",
     "GEN(s)",
+    "CTX_LEN",
     width = name_width
   );
   if any_retrieval {
@@ -326,7 +331,7 @@ fn render_text(report: &Report) {
   for setup in &report.setups {
     let m = &setup.overall;
     print!(
-      "{:<width$}  {:>7}  {:>7}  {:>8}  {:>5}  {:>5}  {:>4}  {:>3}  {:>8}",
+      "{:<width$}  {:>7}  {:>7}  {:>8}  {:>5}  {:>5}  {:>4}  {:>3}  {:>8}  {:>10}",
       setup.setup,
       pct(m.accuracy()),
       pct(m.precision()),
@@ -336,6 +341,7 @@ fn render_text(report: &Report) {
       m.errors,
       m.total(),
       secs(m.avg_generation()),
+      float(m.avg_context_length()),
       width = name_width
     );
 
@@ -353,7 +359,7 @@ fn render_text(report: &Report) {
 
     for (dataset, dm) in &setup.per_dataset {
       print!(
-        "  └ {:<width$}  {:>7}  {:>7}  {:>8}  {:>5}  {:>5}  {:>4}  {:>3}  {:>8}",
+        "  └ {:<width$}  {:>7}  {:>7}  {:>8}  {:>5}  {:>5}  {:>4}  {:>3}  {:>8}  {:>10}",
         dataset,
         pct(dm.accuracy()),
         pct(dm.precision()),
@@ -363,6 +369,7 @@ fn render_text(report: &Report) {
         dm.errors,
         dm.total(),
         secs(dm.avg_generation()),
+        float(m.avg_context_length()),
         width = name_width.saturating_sub(4)
       );
 
@@ -383,7 +390,7 @@ fn render_text(report: &Report) {
   println!(
     "\nACC% = correct / scored, PREC% = correct / committed, COVER% = \
      committed / scored\nGEN(s)/RET(s) = mean generation/retrieval time per \
-     question, in seconds"
+     question, in seconds\nCTX_LEN = average context length"
   );
 }
 
