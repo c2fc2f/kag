@@ -19,10 +19,15 @@ For every result file it recovers the **setup** name from the filename (strippin
 
 Because grading is an exact comparison between the model's output and the expected option identifier, a scorable setup is expected to emit just the option key (e.g. `b`) — typically enforced through its system prompt. Files that do not match the `<prefix>…json` naming scheme, or that fail to parse, are reported in the logs and skipped.
 
+## Subcommands
+
+`stats` also exposes [`find`](subcommand/find/README.md), a regex search over the raw model responses in the result tree — useful for spotting refusals, empty answers, or any other pattern without needing a datasets file. See its own README for details.
+
 ## Usage
 
 ```
 kag stats [OPTIONS] --datasets <DATASETS>
+kag stats find [OPTIONS] <REGEX>
 ```
 
 | Flag | Short | Description | Default |
@@ -153,4 +158,4 @@ kag stats \
 - The `--prefix` here must match the benchmark's `--prefix`, otherwise setup names cannot be recovered and matching files are skipped.
 - Increasing log verbosity with `-v`/`-vv` traces every per-file grading decision and reports files that were ignored or failed to parse.
 
-See the [project README](../../../README.md) for configuration and the [benchmark README](../benchmark/README.md) for how the result tree is produced.
+See the [find README](subcommand/find/README.md) for searching raw responses by regex, the [project README](../../../README.md) for configuration, and the [benchmark README](../benchmark/README.md) for how the result tree is produced.

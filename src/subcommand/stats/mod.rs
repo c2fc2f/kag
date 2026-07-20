@@ -9,6 +9,7 @@
 //! and rendered either as a human-readable table or as a JSON document.
 
 mod metric;
+mod subcommand;
 
 use std::{
   collections::{BTreeMap, BTreeSet},
@@ -24,7 +25,7 @@ use log::{debug, trace, warn};
 use crate::{
   cli::{
     component::ComponentName,
-    stats::{Args, Format},
+    stats::{Args, Command, Format},
   },
   generation, match_err,
   subcommand::{
@@ -406,51 +407,57 @@ fn render_text(report: &Report) {
 /// Returns `ExitCode::SUCCESS` once the report has been rendered, or
 /// `ExitCode::FAILURE` if the datasets file cannot be loaded, the result tree
 /// cannot be walked, or the JSON report cannot be serialized.
-pub fn run(args: Args) -> ExitCode {
-  let datasets: Datasets = match_err!(
-    serde_json::from_reader(match_err!(
-      std::fs::File::open(&args.datasets),
-      "Failed to open the datasets ({:?}) file",
-      args.datasets
-    )),
-    "Failed to parse the datasets"
-  );
-  debug!("Datasets successfully loaded for scoring");
-
-  let (setups, seen_datasets, skipped) = match_err!(
-    collect_metrics(&args.results, &args.prefix, &datasets),
-    "Failed to walk the results directory ({:?})",
-    args.results
-  );
-
-  let scorable_questions = datasets
-    .0
-    .values()
-    .flat_map(|questions| questions.values())
-    .filter(|entry| {
-      matches!(
-        entry.output,
-        Some(dataset::Output::Mcq {
-          answer: Some(_),
-          ..
-        })
-      )
-    })
-    .count();
-
-  let report =
-    build_report(setups, &seen_datasets, scorable_questions, skipped);
-
-  match args.format {
-    Format::Text => render_text(&report),
-    Format::Json => {
-      let json = match_err!(
-        serde_json::to_string_pretty(&report),
-        "Failed to serialize the report as JSON"
+pub fn run(mut args: Args) -> ExitCode {
+  match args.command.take() {
+    Some(Command::Find(sargs)) => subcommand::find::run(args, sargs),
+    None => {
+      let dataset = args.datasets.unwrap();
+      let datasets: Datasets = match_err!(
+        serde_json::from_reader(match_err!(
+          std::fs::File::open(&dataset),
+          "Failed to open the datasets ({:?}) file",
+          dataset
+        )),
+        "Failed to parse the datasets"
       );
-      println!("{json}");
+      debug!("Datasets successfully loaded for scoring");
+
+      let scorable_questions = datasets
+        .0
+        .values()
+        .flat_map(|questions| questions.values())
+        .filter(|entry| {
+          matches!(
+            entry.output,
+            Some(dataset::Output::Mcq {
+              answer: Some(_),
+              ..
+            })
+          )
+        })
+        .count();
+
+      let (setups, seen_datasets, skipped) = match_err!(
+        collect_metrics(&args.results, &args.prefix, &datasets),
+        "Failed to walk the results directory ({:?})",
+        args.results
+      );
+
+      let report =
+        build_report(setups, &seen_datasets, scorable_questions, skipped);
+
+      match args.format {
+        Format::Text => render_text(&report),
+        Format::Json => {
+          let json = match_err!(
+            serde_json::to_string_pretty(&report),
+            "Failed to serialize the report as JSON"
+          );
+          println!("{json}");
+        }
+      }
+
+      ExitCode::SUCCESS
     }
   }
-
-  ExitCode::SUCCESS
 }
