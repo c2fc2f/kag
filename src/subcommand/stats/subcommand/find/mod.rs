@@ -134,6 +134,7 @@ fn run_fzf(matches: &[Match]) -> anyhow::Result<()> {
       "\t",
       "--with-nth",
       "2..",
+      "--multi",
       "--preview",
       "cat {1}",
     ])
