@@ -82,15 +82,14 @@ pub async fn retrieve_with_embedding(
     index, top_k
   );
 
-  // `index`, `top_k` and `embed` are passed as query parameters.
-  // `neighborhood` is interpolated into the query text instead, because
-  // Cypher does not allow variable-length path bounds (`*0..N`) to be
-  // parameterized. This is safe from injection: `neighborhood` is a `u32`
-  // and can only render as digits
   let query = query(&format!(
     "\
-      CALL db.index.vector.queryNodes($index, $top_k, $embed) \
-      YIELD node \
+      MATCH (node) \
+        SEARCH node IN ( \
+          VECTOR INDEX {index} \
+          FOR $embedding \
+          LIMIT $top_k \
+        ) \
       MATCH (node)-[*0..{neighborhood}]-(reachable) \
       WITH collect(DISTINCT reachable) AS nodes \
       UNWIND nodes AS n \
@@ -103,9 +102,8 @@ pub async fn retrieve_with_embedding(
         endNode(rel) AS target\
     ",
   ))
-  .param("index", index)
   .param("top_k", top_k)
-  .param("embed", embedding.vec.clone());
+  .param("embedding", embedding.vec.clone());
 
   let mut retrieval = graph.execute(query).await.with_context(|| {
     format!(
