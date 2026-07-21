@@ -1,6 +1,6 @@
 [package]
 name = "kag"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 authors = ["c2fc2f <contact@c2fc2f.com>"]
 description = "A comprehensive toolkit for Knowledge Graph Enhanced Retrieval-Augmented Generation (KAG), featuring generation pipelines and evaluation benchmarks"

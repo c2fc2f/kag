@@ -29,6 +29,7 @@ kag benchmark [OPTIONS] --datasets <DATASETS> --benchmark <BENCHMARK>
 | `--continue` | | Resume an interrupted run, preserving existing non-empty result files instead of overwriting them | *(disabled)* |
 | `--output <DIR>` | `-o` | Root directory for result files | `.` (current directory) |
 | `--prefix <STRING>` | | Prefix prepended to each result filename | *(empty)* |
+| `--skip <SETUP1,SETUP2>` | | List of setups that should not be performed (separated by commas) | *(empty)* |
 
 The global `--config` file is still used to resolve the providers, databases, and retrievers that setups reference by name.
 

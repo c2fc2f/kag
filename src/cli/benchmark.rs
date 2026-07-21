@@ -7,6 +7,8 @@
 
 use std::{num::NonZero, path::PathBuf};
 
+use crate::cli::component::ComponentName;
+
 /// Command-line arguments for the benchmark execution
 #[derive(clap::Args, Debug)]
 pub struct Args {
@@ -35,6 +37,11 @@ pub struct Args {
   /// Optional naming prefix to append to the generated JSON result filenames
   #[arg(long, default_value = "")]
   pub prefix: String,
+
+  /// Optional list of techniques that should not be performed (separated by
+  /// commas)
+  #[arg(long, value_delimiter = ',')]
+  pub skip: Vec<ComponentName>,
 
   /// Path to the config file
   #[arg(short, long, default_value = "config.toml")]

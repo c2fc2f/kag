@@ -76,6 +76,7 @@ pub fn run(args: Args) -> ExitCode {
   let config = Arc::new(config);
   let output = Arc::new(args.output);
   let prefix = Arc::new(args.prefix);
+  let skip = Arc::new(args.skip);
 
   rt.block_on(async {
     for (dname, dataset) in datasets.0 {
@@ -88,6 +89,8 @@ pub fn run(args: Args) -> ExitCode {
           let benchmark = Arc::clone(&benchmark);
           let output = Arc::clone(&output);
           let prefix = Arc::clone(&prefix);
+          let skip = Arc::clone(&skip);
+
           tokio::spawn(async move {
             debug!("Starting query '{qname}' in dataset '{dname}'");
             match execute_benchmark(
@@ -96,6 +99,7 @@ pub fn run(args: Args) -> ExitCode {
               &qname,
               &question,
               benchmark.as_ref(),
+              &skip,
               &output,
               &prefix,
               !args.r#continue,
@@ -131,6 +135,7 @@ pub fn run(args: Args) -> ExitCode {
 /// * `qname` - The identifier name of the current question/query
 /// * `question` - The actual dataset item containing input prompts
 /// * `benchmark` - Reference to the loaded benchmark setups
+/// * `skip` - list of setups that should not be performed
 /// * `output` - Root path where results should be persisted
 /// * `prefix` - String slice to prefix the JSON filenames
 /// * `overwrite` - If `true`, overwrites existing files; if `false`, skips
@@ -147,6 +152,7 @@ async fn execute_benchmark(
   qname: &ComponentName,
   question: &DatasetEntry,
   benchmark: &Benchmark,
+  skip: &[ComponentName],
   output: &Path,
   prefix: &str,
   overwrite: bool,
@@ -162,6 +168,16 @@ async fn execute_benchmark(
   let mut dir_created = false;
 
   for (sname, setup) in benchmark.as_ref() {
+    if skip.contains(sname) {
+      trace!(
+        "\
+          [Dataset: {}] Skipping setup '{}' for question '{}': setup is \
+          explicitly included in the skip list\
+        ",
+        dname, sname, qname
+      );
+      continue;
+    }
     if let Some(dataset) = &setup.datasets
       && !dataset.contains(dname)
     {
